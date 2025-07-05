@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, ScrollView, TextInput } from 'react-native';
 import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
-import { Plus, Settings, Building, Wind, Star, Trash2, SquareCheck as CheckSquare, Square, X } from 'lucide-react-native';
+import { Plus, Settings, Building, Wind, Star, Trash2, SquareCheck as CheckSquare, Square } from 'lucide-react-native';
 import { Header } from '@/components/Header';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
@@ -9,12 +9,9 @@ import { Project, Building as BuildingType, FunctionalZone } from '@/types';
 import { storage } from '@/utils/storage';
 import { calculateCompliance, formatDeviation } from '@/utils/compliance';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useTheme } from '@/contexts/ThemeContext';
-import { useAndroidBackButton } from '@/utils/BackHandler';
 
 export default function ProjectDetailScreen() {
   const { strings } = useLanguage();
-  const { theme } = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
@@ -38,12 +35,6 @@ export default function ProjectDetailScreen() {
 
   // NOUVEAU : Référence pour l'auto-focus
   const nameInputRef = useRef<TextInput>(null);
-
-  // Configure Android back button to go back to the home screen
-  useAndroidBackButton(() => {
-    handleBack();
-    return true;
-  });
 
   // NOUVEAU : Auto-focus sur l'input du nom quand le modal s'ouvre
   useEffect(() => {
@@ -381,13 +372,13 @@ export default function ProjectDetailScreen() {
                   onPress={() => handleBuildingSelection(item.id)}
                 >
                   {isSelected ? (
-                    <CheckSquare size={20} color={theme.colors.primary} />
+                    <CheckSquare size={20} color="#009999" />
                   ) : (
-                    <Square size={20} color={theme.colors.textTertiary} />
+                    <Square size={20} color="#9CA3AF" />
                   )}
                 </TouchableOpacity>
               )}
-              <Building size={20} color={theme.colors.primary} />
+              <Building size={20} color="#009999" />
               {/* NOUVEAU : Nom du bâtiment cliquable pour édition directe */}
               <TouchableOpacity 
                 style={[styles.buildingNameContainer, selectionMode && styles.buildingNameContainerSelection]}
@@ -419,7 +410,7 @@ export default function ProjectDetailScreen() {
               >
                 <Star 
                   size={14} 
-                  color={isFavorite ? "#F59E0B" : theme.colors.textTertiary} 
+                  color={isFavorite ? "#F59E0B" : "#9CA3AF"} 
                   fill={isFavorite ? "#F59E0B" : "none"}
                 />
               </TouchableOpacity>
@@ -427,13 +418,13 @@ export default function ProjectDetailScreen() {
                 style={styles.actionButton}
                 onPress={() => handleEditBuilding(item)}
               >
-                <Settings size={14} color={theme.colors.primary} />
+                <Settings size={14} color="#009999" />
               </TouchableOpacity>
               <TouchableOpacity 
                 style={styles.actionButton}
                 onPress={() => handleDeleteBuilding(item)}
               >
-                <Trash2 size={14} color={theme.colors.error} />
+                <Trash2 size={14} color="#EF4444" />
               </TouchableOpacity>
             </View>
           )}
@@ -442,7 +433,7 @@ export default function ProjectDetailScreen() {
         <View style={styles.buildingContent}>
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
-              <Wind size={16} color={theme.colors.primary} />
+              <Wind size={16} color="#009999" />
               <Text style={styles.statText}>{stats.zoneCount} {strings.zones.toLowerCase()}</Text>
             </View>
             
@@ -485,8 +476,6 @@ export default function ProjectDetailScreen() {
     );
   };
 
-  const styles = createStyles(theme);
-
   if (loading) {
     return (
       <View style={styles.container}>
@@ -523,10 +512,10 @@ export default function ProjectDetailScreen() {
               </Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={handleEditProject} style={styles.actionButton}>
-              <Settings size={18} color={theme.colors.primary} />
+              <Settings size={18} color="#009999" />
             </TouchableOpacity>
             <TouchableOpacity onPress={handleCreateBuilding} style={styles.actionButton}>
-              <Plus size={22} color={theme.colors.primary} />
+              <Plus size={22} color="#009999" />
             </TouchableOpacity>
           </View>
         }
@@ -543,8 +532,8 @@ export default function ProjectDetailScreen() {
               onPress={handleBulkFavorite}
               disabled={selectedBuildings.size === 0}
             >
-              <Star size={20} color={selectedBuildings.size > 0 ? "#F59E0B" : theme.colors.textTertiary} />
-              <Text style={[styles.toolbarButtonText, { color: selectedBuildings.size > 0 ? "#F59E0B" : theme.colors.textTertiary }]}>
+              <Star size={20} color={selectedBuildings.size > 0 ? "#F59E0B" : "#9CA3AF"} />
+              <Text style={[styles.toolbarButtonText, { color: selectedBuildings.size > 0 ? "#F59E0B" : "#9CA3AF" }]}>
                 {strings.favorites}
               </Text>
             </TouchableOpacity>
@@ -553,8 +542,8 @@ export default function ProjectDetailScreen() {
               onPress={handleBulkDelete}
               disabled={selectedBuildings.size === 0}
             >
-              <Trash2 size={20} color={selectedBuildings.size > 0 ? theme.colors.error : theme.colors.textTertiary} />
-              <Text style={[styles.toolbarButtonText, { color: selectedBuildings.size > 0 ? theme.colors.error : theme.colors.textTertiary }]}>
+              <Trash2 size={20} color={selectedBuildings.size > 0 ? "#EF4444" : "#9CA3AF"} />
+              <Text style={[styles.toolbarButtonText, { color: selectedBuildings.size > 0 ? "#EF4444" : "#9CA3AF" }]}>
                 {strings.delete}
               </Text>
             </TouchableOpacity>
@@ -565,7 +554,7 @@ export default function ProjectDetailScreen() {
       <View style={styles.content}>
         {project.buildings.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Building size={64} color={theme.colors.textTertiary} />
+            <Building size={64} color="#D1D5DB" />
             <Text style={styles.emptyTitle}>{strings.noBuildings}</Text>
             <Text style={styles.emptySubtitle}>
               {strings.noBuildingsDesc}
@@ -602,7 +591,7 @@ export default function ProjectDetailScreen() {
                 onPress={() => setCreateBuildingModalVisible(false)}
                 style={styles.closeButton}
               >
-                <X size={20} color={theme.colors.textSecondary} />
+                <Text style={styles.closeButtonText}>✕</Text>
               </TouchableOpacity>
             </View>
 
@@ -658,7 +647,7 @@ export default function ProjectDetailScreen() {
                 onPress={() => setNameEditModal({ visible: false, building: null, name: '' })}
                 style={styles.closeButton}
               >
-                <X size={20} color={theme.colors.textSecondary} />
+                <Text style={styles.closeButtonText}>✕</Text>
               </TouchableOpacity>
             </View>
 
@@ -670,7 +659,7 @@ export default function ProjectDetailScreen() {
                 value={nameEditModal.name}
                 onChangeText={(text) => setNameEditModal(prev => ({ ...prev, name: text }))}
                 placeholder="Ex: Bâtiment A, Tour Nord"
-                placeholderTextColor={theme.colors.textTertiary}
+                placeholderTextColor="#9CA3AF"
                 autoFocus={true}
                 selectTextOnFocus={true}
               />
@@ -696,10 +685,10 @@ export default function ProjectDetailScreen() {
   );
 }
 
-const createStyles = (theme: any) => StyleSheet.create({
+const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
+    backgroundColor: '#F9FAFB',
   },
   content: {
     flex: 1,
@@ -712,7 +701,7 @@ const createStyles = (theme: any) => StyleSheet.create({
   loadingText: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    color: theme.colors.textSecondary,
+    color: '#6B7280',
   },
   errorContainer: {
     flex: 1,
@@ -723,7 +712,7 @@ const createStyles = (theme: any) => StyleSheet.create({
   errorText: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    color: theme.colors.textSecondary,
+    color: '#6B7280',
     textAlign: 'center',
   },
   headerActions: {
@@ -735,12 +724,12 @@ const createStyles = (theme: any) => StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
-    backgroundColor: theme.colors.surfaceSecondary,
+    backgroundColor: '#F3F4F6',
   },
   selectionButtonText: {
     fontSize: 12,
     fontFamily: 'Inter-Medium',
-    color: theme.colors.textSecondary,
+    color: '#374151',
   },
   actionButton: {
     padding: 6,
@@ -751,14 +740,14 @@ const createStyles = (theme: any) => StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: theme.colors.surface,
+    backgroundColor: '#ffffff',
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    borderBottomColor: '#E5E7EB',
   },
   selectionCount: {
     fontSize: 16,
     fontFamily: 'Inter-Medium',
-    color: theme.colors.text,
+    color: '#111827',
   },
   selectionActions: {
     flexDirection: 'row',
@@ -771,7 +760,7 @@ const createStyles = (theme: any) => StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: theme.colors.surfaceSecondary,
+    backgroundColor: '#F9FAFB',
   },
   toolbarButtonText: {
     fontSize: 14,
@@ -786,14 +775,14 @@ const createStyles = (theme: any) => StyleSheet.create({
   emptyTitle: {
     fontSize: 24,
     fontFamily: 'Inter-Bold',
-    color: theme.colors.text,
+    color: '#111827',
     marginTop: 24,
     marginBottom: 12,
   },
   emptySubtitle: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    color: theme.colors.textSecondary,
+    color: '#6B7280',
     textAlign: 'center',
     marginBottom: 32,
     lineHeight: 24,
@@ -805,7 +794,7 @@ const createStyles = (theme: any) => StyleSheet.create({
     padding: 16,
   },
   buildingCard: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: '#ffffff',
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
@@ -817,8 +806,8 @@ const createStyles = (theme: any) => StyleSheet.create({
   },
   selectedCard: {
     borderWidth: 2,
-    borderColor: theme.colors.primary,
-    backgroundColor: theme.colors.primary + '20',
+    borderColor: '#009999',
+    backgroundColor: '#F0FDFA',
   },
   favoriteCard: {
     borderLeftWidth: 4,
@@ -855,7 +844,7 @@ const createStyles = (theme: any) => StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 8,
     borderRadius: 6,
-    backgroundColor: theme.colors.surfaceSecondary,
+    backgroundColor: '#F9FAFB',
     minWidth: 0,
   },
   buildingNameContainerSelection: {
@@ -863,7 +852,7 @@ const createStyles = (theme: any) => StyleSheet.create({
   },
   buildingName: {
     fontFamily: 'Inter-Bold',
-    color: theme.colors.text,
+    color: '#111827',
     flex: 1,
     minWidth: 0,
   },
@@ -873,7 +862,7 @@ const createStyles = (theme: any) => StyleSheet.create({
   buildingDescription: {
     fontSize: 14,
     fontFamily: 'Inter-Regular',
-    color: theme.colors.textSecondary,
+    color: '#6B7280',
     marginTop: 4,
     marginLeft: 28,
   },
@@ -898,7 +887,7 @@ const createStyles = (theme: any) => StyleSheet.create({
   statText: {
     fontSize: 14,
     fontFamily: 'Inter-Medium',
-    color: theme.colors.textSecondary,
+    color: '#6B7280',
   },
   complianceIndicator: {
     width: 8,
@@ -914,7 +903,7 @@ const createStyles = (theme: any) => StyleSheet.create({
     height: 4,
     borderRadius: 2,
     overflow: 'hidden',
-    backgroundColor: theme.colors.border,
+    backgroundColor: '#E5E7EB',
   },
   complianceSegment: {
     height: '100%',
@@ -927,7 +916,7 @@ const createStyles = (theme: any) => StyleSheet.create({
     padding: 20,
   },
   modalContent: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: '#ffffff',
     borderRadius: 20,
     width: '100%',
     maxWidth: 400,
@@ -935,7 +924,7 @@ const createStyles = (theme: any) => StyleSheet.create({
   },
   // NOUVEAU : Modal spécifique pour l'édition du nom
   nameEditModalContent: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: '#ffffff',
     borderRadius: 16,
     width: '100%',
     maxWidth: 400,
@@ -946,15 +935,19 @@ const createStyles = (theme: any) => StyleSheet.create({
     alignItems: 'center',
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.separator,
+    borderBottomColor: '#F3F4F6',
   },
   modalTitle: {
     fontSize: 20,
     fontFamily: 'Inter-Bold',
-    color: theme.colors.text,
+    color: '#111827',
   },
   closeButton: {
     padding: 8,
+  },
+  closeButtonText: {
+    fontSize: 18,
+    color: '#6B7280',
   },
   modalBody: {
     padding: 20,
@@ -964,7 +957,7 @@ const createStyles = (theme: any) => StyleSheet.create({
     flexDirection: 'row',
     padding: 20,
     borderTopWidth: 1,
-    borderTopColor: theme.colors.separator,
+    borderTopColor: '#F3F4F6',
     gap: 12,
   },
   modalButton: {
@@ -974,19 +967,18 @@ const createStyles = (theme: any) => StyleSheet.create({
   inputLabel: {
     fontSize: 14,
     fontFamily: 'Inter-Medium',
-    color: theme.colors.textSecondary,
+    color: '#374151',
     marginBottom: 6,
   },
   nameTextInput: {
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: '#D1D5DB',
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 12,
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    backgroundColor: theme.colors.inputBackground,
-    color: theme.colors.text,
+    backgroundColor: '#ffffff',
     minHeight: 48,
   },
 });

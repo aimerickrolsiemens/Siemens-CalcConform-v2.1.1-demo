@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Alert, Text, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, Text, TouchableOpacity, KeyboardAvoidingView, Platform, useColorScheme } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Header } from '@/components/Header';
 import { Input } from '@/components/Input';
@@ -7,56 +7,66 @@ import { Button } from '@/components/Button';
 import { ShutterType } from '@/types';
 import { storage } from '@/utils/storage';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useTheme } from '@/contexts/ThemeContext';
 
 export default function CreateShutterScreen() {
   const { strings, currentLanguage } = useLanguage();
-  const { theme } = useTheme();
   const { zoneId } = useLocalSearchParams<{ zoneId: string }>();
   const [name, setName] = useState('');
   const [type, setType] = useState<ShutterType>('high');
-  const [referenceFlow, setReferenceFlow] = useState('');
-  const [measuredFlow, setMeasuredFlow] = useState('');
+  const [referenceFlow, setReferenceFlow] = useState('0');
+  const [measuredFlow, setMeasuredFlow] = useState('0');
   const [remarks, setRemarks] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ name?: string; referenceFlow?: string; measuredFlow?: string }>({});
 
+  // NOUVEAU : Détecter le thème système
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+
+  // FONCTION POUR OBTENIR LE PRÉFIXE SELON LA LANGUE ET LE TYPE
   const getShutterPrefix = (shutterType: ShutterType, language: string) => {
     const prefixes = {
-      fr: { high: 'VH', low: 'VB' },
-      en: { high: 'HS', low: 'LS' },
-      es: { high: 'CA', low: 'CB' },
-      it: { high: 'SA', low: 'SB' },
+      fr: { high: 'VH', low: 'VB' },      // Français : Volet Haut / Volet Bas
+      en: { high: 'HS', low: 'LS' },      // Anglais : High Shutter / Low Shutter
+      es: { high: 'CA', low: 'CB' },      // Espagnol : Compuerta Alta / Compuerta Baja
+      it: { high: 'SA', low: 'SB' },      // Italien : Serranda Alta / Serranda Bassa
     };
     
     return prefixes[language as keyof typeof prefixes]?.[shutterType] || prefixes.fr[shutterType];
   };
 
+  // INITIALISER LE NOM AU PREMIER RENDU AVEC LE BON PRÉFIXE
   useEffect(() => {
     const prefix = getShutterPrefix('high', currentLanguage);
     setName(prefix);
-  }, []);
+  }, []); // Seulement au premier rendu
 
+  // METTRE À JOUR LE PRÉFIXE QUAND LA LANGUE CHANGE
   useEffect(() => {
     const newPrefix = getShutterPrefix(type, currentLanguage);
+    // Seulement si le nom actuel est un préfixe simple (2-3 caractères)
     if (name.length <= 3) {
       setName(newPrefix);
     }
   }, [currentLanguage]);
 
+  // METTRE À JOUR LE PRÉFIXE QUAND LE TYPE CHANGE
   useEffect(() => {
     const newPrefix = getShutterPrefix(type, currentLanguage);
     const oldPrefix = getShutterPrefix(type === 'high' ? 'low' : 'high', currentLanguage);
     
+    // Si le nom commence par l'ancien préfixe, le remplacer
     if (name.startsWith(oldPrefix)) {
       setName(name.replace(oldPrefix, newPrefix));
     } else if (name.length <= 3) {
+      // Si c'est un nom court (probablement juste un préfixe), le remplacer
       setName(newPrefix);
     }
   }, [type]);
 
   const handleBack = () => {
     if (zoneId) {
+      // CORRIGÉ : Retourner vers la zone (liste des volets)
       router.push(`/(tabs)/zone/${zoneId}`);
     } else {
       router.push('/(tabs)/');
@@ -98,6 +108,7 @@ export default function CreateShutterScreen() {
       });
 
       if (shutter) {
+        // CORRIGÉ : Naviguer vers le volet créé
         router.push(`/(tabs)/shutter/${shutter.id}`);
       } else {
         Alert.alert(strings.error, 'Impossible de créer le volet. Zone introuvable.');
@@ -112,8 +123,6 @@ export default function CreateShutterScreen() {
   const handleTypeChange = (newType: ShutterType) => {
     setType(newType);
   };
-
-  const styles = createStyles(theme);
 
   return (
     <KeyboardAvoidingView 
@@ -140,7 +149,7 @@ export default function CreateShutterScreen() {
         />
 
         <View style={styles.typeContainer}>
-          <Text style={styles.typeLabel}>{strings.shutterType} *</Text>
+          <Text style={[styles.typeLabel, isDark && styles.typeLabelDark]}>{strings.shutterType} *</Text>
           <View style={styles.typeOptions}>
             <TouchableOpacity
               style={[styles.typeOption, type === 'high' && styles.typeOptionSelected]}
@@ -168,6 +177,7 @@ export default function CreateShutterScreen() {
           placeholder="Ex: 5000"
           keyboardType="numeric"
           error={errors.referenceFlow}
+          clearZeroOnFocus={true}
         />
 
         <Input
@@ -177,6 +187,7 @@ export default function CreateShutterScreen() {
           placeholder="Ex: 4800"
           keyboardType="numeric"
           error={errors.measuredFlow}
+          clearZeroOnFocus={true}
         />
 
         <Input
@@ -200,10 +211,10 @@ export default function CreateShutterScreen() {
   );
 }
 
-const createStyles = (theme: any) => StyleSheet.create({
+const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
+    backgroundColor: '#F9FAFB',
   },
   content: {
     flex: 1,
@@ -218,8 +229,12 @@ const createStyles = (theme: any) => StyleSheet.create({
   typeLabel: {
     fontSize: 14,
     fontFamily: 'Inter-Medium',
-    color: theme.colors.textSecondary,
+    color: '#374151',
     marginBottom: 6,
+  },
+  // NOUVEAU : Style pour le label en mode sombre
+  typeLabelDark: {
+    color: '#D1D5DB',
   },
   typeOptions: {
     flexDirection: 'row',
@@ -231,21 +246,21 @@ const createStyles = (theme: any) => StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface,
+    borderColor: '#D1D5DB',
+    backgroundColor: '#ffffff',
     alignItems: 'center',
   },
   typeOptionSelected: {
-    borderColor: theme.colors.primary,
-    backgroundColor: theme.colors.primary + '20',
+    borderColor: '#009999',
+    backgroundColor: '#F0FDFA',
   },
   typeOptionText: {
     fontSize: 14,
     fontFamily: 'Inter-Medium',
-    color: theme.colors.textSecondary,
+    color: '#6B7280',
   },
   typeOptionTextSelected: {
-    color: theme.colors.primary,
+    color: '#009999',
   },
   buttonContainer: {
     marginTop: 24,

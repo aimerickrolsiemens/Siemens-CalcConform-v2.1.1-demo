@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, useColorScheme } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Header } from '@/components/Header';
 import { Input } from '@/components/Input';
@@ -7,14 +7,11 @@ import { Button } from '@/components/Button';
 import { Project, Building, FunctionalZone } from '@/types';
 import { storage } from '@/utils/storage';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useTheme } from '@/contexts/ThemeContext';
-import { useAndroidBackButton } from '@/utils/BackHandler';
 
 export default function EditZoneScreen() {
   const { strings } = useLanguage();
-  const { theme } = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [zone, setZone] = useState<FunctionalZone | null>(null);
+  const [zone,setZone] = useState<FunctionalZone | null>(null);
   const [building, setBuilding] = useState<Building | null>(null);
   const [project, setProject] = useState<Project | null>(null);
   const [name, setName] = useState('');
@@ -23,11 +20,9 @@ export default function EditZoneScreen() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [errors, setErrors] = useState<{ name?: string }>({});
 
-  // Configure Android back button to go back to the zone screen
-  useAndroidBackButton(() => {
-    handleBack();
-    return true;
-  });
+  // NOUVEAU : Détecter le thème système
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
 
   useEffect(() => {
     loadZone();
@@ -56,12 +51,10 @@ export default function EditZoneScreen() {
     }
   };
 
-  // CORRIGÉ : Retourner vers la page de la zone (et non du bâtiment)
+  // CORRIGÉ : Retourner vers la page du bâtiment (d'où on vient)
   const handleBack = () => {
     try {
-      if (zone) {
-        router.push(`/(tabs)/zone/${zone.id}`);
-      } else if (building) {
+      if (building) {
         router.push(`/(tabs)/building/${building.id}`);
       } else {
         router.push('/(tabs)/');
@@ -94,8 +87,12 @@ export default function EditZoneScreen() {
       });
 
       if (updatedZone) {
-        // CORRIGÉ : Retourner vers la page de la zone (et non du bâtiment)
-        router.push(`/(tabs)/zone/${zone.id}`);
+        // CORRIGÉ : Retourner vers la page du bâtiment (d'où on vient)
+        if (building) {
+          router.push(`/(tabs)/building/${building.id}`);
+        } else {
+          router.push('/(tabs)/');
+        }
       }
     } catch (error) {
       console.error('Erreur lors de la modification de la zone:', error);
@@ -103,8 +100,6 @@ export default function EditZoneScreen() {
       setLoading(false);
     }
   };
-
-  const styles = createStyles(theme);
 
   if (initialLoading) {
     return (
@@ -174,10 +169,10 @@ export default function EditZoneScreen() {
   );
 }
 
-const createStyles = (theme: any) => StyleSheet.create({
+const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
+    backgroundColor: '#F9FAFB',
   },
   content: {
     flex: 1,
@@ -194,7 +189,7 @@ const createStyles = (theme: any) => StyleSheet.create({
   loadingText: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    color: theme.colors.textSecondary,
+    color: '#6B7280',
   },
   errorContainer: {
     flex: 1,
@@ -205,7 +200,7 @@ const createStyles = (theme: any) => StyleSheet.create({
   errorText: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    color: theme.colors.textSecondary,
+    color: '#6B7280',
     textAlign: 'center',
   },
   buttonContainer: {

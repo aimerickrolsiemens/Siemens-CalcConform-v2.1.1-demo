@@ -2,11 +2,9 @@ import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Platform } from 'react-native';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useTheme } from '@/contexts/ThemeContext';
 
 export default function TabLayout() {
   const { strings } = useLanguage();
-  const { theme } = useTheme();
 
   return (
     <Tabs
@@ -15,22 +13,22 @@ export default function TabLayout() {
         animation: 'shift',
         animationDuration: 250,
         tabBarStyle: {
-          backgroundColor: theme.colors.tabBarBackground,
+          backgroundColor: '#009999',
           borderTopWidth: 0,
-          paddingBottom: Platform.OS === 'ios' ? 20 : 8,
-          paddingTop: 12,
-          height: Platform.OS === 'ios' ? 68 : 56,
+          paddingBottom: Platform.OS === 'ios' ? 20 : 8, // RÉDUIT : iOS 34→20, Android 16→8
+          paddingTop: 12, // RÉDUIT : 24→12
+          height: Platform.OS === 'ios' ? 68 : 56, // RÉDUIT : iOS 96→68, Android 80→56
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -2 },
           shadowOpacity: 0.1,
           shadowRadius: 4,
           elevation: 8,
         },
-        tabBarActiveTintColor: theme.colors.tabBarActive,
-        tabBarInactiveTintColor: theme.colors.tabBarInactive,
+        tabBarActiveTintColor: '#ffffff',
+        tabBarInactiveTintColor: 'rgba(255, 255, 255, 0.6)',
         tabBarShowLabel: false,
         tabBarIconStyle: {
-          marginTop: -4,
+          marginTop: -4, // AJUSTÉ : -8→-4 pour un centrage parfait
           marginBottom: 0,
         }
       }}>
@@ -79,10 +77,11 @@ export default function TabLayout() {
           ),
         }}
       />
+      {/* NOUVEAU : Onglet Paramètres caché */}
       <Tabs.Screen
         name="settings"
         options={{
-          href: null,
+          href: null, // Caché de la barre de navigation
           title: 'Paramètres',
         }}
       />

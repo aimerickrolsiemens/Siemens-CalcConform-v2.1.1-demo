@@ -2,7 +2,6 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useTheme } from '@/contexts/ThemeContext';
 import { router } from 'expo-router';
 
 interface HeaderProps {
@@ -15,7 +14,6 @@ interface HeaderProps {
 
 export function Header({ title, subtitle, onBack, rightComponent, showSettings = true }: HeaderProps) {
   const { strings } = useLanguage();
-  const { theme } = useTheme();
 
   const handleSettingsPress = () => {
     try {
@@ -24,8 +22,6 @@ export function Header({ title, subtitle, onBack, rightComponent, showSettings =
       console.error('Erreur de navigation vers paramètres:', error);
     }
   };
-
-  const styles = createStyles(theme);
 
   return (
     <View style={styles.container}>
@@ -47,7 +43,7 @@ export function Header({ title, subtitle, onBack, rightComponent, showSettings =
               style={styles.settingsButton}
               onPress={handleSettingsPress}
             >
-              <Ionicons name="settings-outline" size={22} color={theme.colors.primary} />
+              <Ionicons name="settings-outline" size={22} color="#009999" />
             </TouchableOpacity>
           )}
         </View>
@@ -58,7 +54,7 @@ export function Header({ title, subtitle, onBack, rightComponent, showSettings =
         <View style={styles.left}>
           {onBack && (
             <TouchableOpacity onPress={onBack} style={styles.backButton}>
-              <Ionicons name="chevron-back" size={24} color={theme.colors.primary} />
+              <Ionicons name="chevron-back" size={24} color="#009999" />
             </TouchableOpacity>
           )}
           <View style={styles.titleContainer}>
@@ -78,19 +74,20 @@ export function Header({ title, subtitle, onBack, rightComponent, showSettings =
   );
 }
 
-const createStyles = (theme: any) => StyleSheet.create({
+const styles = StyleSheet.create({
   container: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: '#ffffff',
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    borderBottomColor: '#E5E7EB',
     paddingTop: 44,
   },
   topBar: {
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.separator,
+    borderBottomColor: '#F3F4F6',
   },
+  // Structure horizontale simple : logo centré + bouton à droite
   topBarContent: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -98,6 +95,7 @@ const createStyles = (theme: any) => StyleSheet.create({
     position: 'relative',
     minHeight: 40,
   },
+  // Logo Siemens plus grand et centré
   logoSection: {
     alignItems: 'center',
   },
@@ -105,14 +103,15 @@ const createStyles = (theme: any) => StyleSheet.create({
     height: 36,
     width: 119,
   },
+  // Bouton paramètres positionné absolument à droite
   settingsButton: {
     position: 'absolute',
     right: 0,
     top: '50%',
-    transform: [{ translateY: -11 }],
+    transform: [{ translateY: -11 }], // Centrer verticalement (22/2 = 11)
     padding: 6,
     borderRadius: 6,
-    backgroundColor: theme.colors.surfaceSecondary,
+    backgroundColor: '#F9FAFB',
   },
   mainHeader: {
     flexDirection: 'row',
@@ -139,12 +138,12 @@ const createStyles = (theme: any) => StyleSheet.create({
   pageTitle: {
     fontSize: 26,
     fontFamily: 'Inter-Bold',
-    color: theme.colors.text,
+    color: '#111827',
   },
   subtitle: {
     fontSize: 15,
     fontFamily: 'Inter-Regular',
-    color: theme.colors.textSecondary,
+    color: '#6B7280',
     marginTop: 2,
   },
 });

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, useColorScheme } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Header } from '@/components/Header';
 import { Input } from '@/components/Input';
@@ -7,12 +7,9 @@ import { Button } from '@/components/Button';
 import { Project, Building } from '@/types';
 import { storage } from '@/utils/storage';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useTheme } from '@/contexts/ThemeContext';
-import { useAndroidBackButton } from '@/utils/BackHandler';
 
 export default function EditBuildingScreen() {
   const { strings } = useLanguage();
-  const { theme } = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [building, setBuilding] = useState<Building | null>(null);
   const [project, setProject] = useState<Project | null>(null);
@@ -22,11 +19,9 @@ export default function EditBuildingScreen() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [errors, setErrors] = useState<{ name?: string }>({});
 
-  // Configure Android back button to go back to the building screen
-  useAndroidBackButton(() => {
-    handleBack();
-    return true;
-  });
+  // NOUVEAU : Détecter le thème système
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
 
   useEffect(() => {
     loadBuilding();
@@ -52,12 +47,10 @@ export default function EditBuildingScreen() {
     }
   };
 
-  // CORRIGÉ : Retourner vers la page du bâtiment (et non du projet)
+  // CORRIGÉ : Retourner vers la page du projet (d'où on vient)
   const handleBack = () => {
     try {
-      if (building) {
-        router.push(`/(tabs)/building/${building.id}`);
-      } else if (project) {
+      if (project) {
         router.push(`/(tabs)/project/${project.id}`);
       } else {
         router.push('/(tabs)/');
@@ -90,8 +83,12 @@ export default function EditBuildingScreen() {
       });
 
       if (updatedBuilding) {
-        // CORRIGÉ : Retourner vers la page du bâtiment (et non du projet)
-        router.push(`/(tabs)/building/${building.id}`);
+        // CORRIGÉ : Retourner vers la page du projet (d'où on vient)
+        if (project) {
+          router.push(`/(tabs)/project/${project.id}`);
+        } else {
+          router.push('/(tabs)/');
+        }
       }
     } catch (error) {
       console.error('Erreur lors de la modification du bâtiment:', error);
@@ -99,8 +96,6 @@ export default function EditBuildingScreen() {
       setLoading(false);
     }
   };
-
-  const styles = createStyles(theme);
 
   if (initialLoading) {
     return (
@@ -172,10 +167,10 @@ export default function EditBuildingScreen() {
   );
 }
 
-const createStyles = (theme: any) => StyleSheet.create({
+const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
+    backgroundColor: '#F9FAFB',
   },
   content: {
     flex: 1,
@@ -192,7 +187,7 @@ const createStyles = (theme: any) => StyleSheet.create({
   loadingText: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    color: theme.colors.textSecondary,
+    color: '#6B7280',
   },
   errorContainer: {
     flex: 1,
@@ -203,7 +198,7 @@ const createStyles = (theme: any) => StyleSheet.create({
   errorText: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    color: theme.colors.textSecondary,
+    color: '#6B7280',
     textAlign: 'center',
   },
   buttonContainer: {

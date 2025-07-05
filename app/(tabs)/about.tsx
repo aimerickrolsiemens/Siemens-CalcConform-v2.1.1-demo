@@ -5,17 +5,15 @@ import { Header } from '@/components/Header';
 import { Button } from '@/components/Button';
 import * as WebBrowser from 'expo-web-browser';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useTheme } from '@/contexts/ThemeContext';
 
 export default function AboutScreen() {
   const { strings } = useLanguage();
-  const { theme } = useTheme();
   const [versionModalVisible, setVersionModalVisible] = useState(false);
   const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
   const [calculationsModalVisible, setCalculationsModalVisible] = useState(false);
   const [upcomingFeaturesModalVisible, setUpcomingFeaturesModalVisible] = useState(false);
 
-  const appVersion = "1.1.0";
+  const appVersion = "1.0.3";
 
   const handleVersionPress = () => {
     setVersionModalVisible(true);
@@ -80,26 +78,20 @@ export default function AboutScreen() {
         </View>
       </View>
       {onPress && (
-        <ChevronRight size={20} color={theme.colors.textTertiary} />
+        <ChevronRight size={20} color="#9CA3AF" />
       )}
     </TouchableOpacity>
   );
-
-  const styles = createStyles(theme);
 
   return (
     <View style={styles.container}>
       <Header title={strings.aboutTitle} subtitle={strings.aboutSubtitle} />
       
-      <ScrollView 
-        style={styles.content} 
-        contentContainerStyle={styles.contentContainer}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
         {/* En-tête de l'application */}
         <View style={styles.appHeader}>
           <View style={styles.appIconContainer}>
-            <Info size={48} color={theme.colors.primary} />
+            <Info size={48} color="#009999" />
           </View>
           <Text style={styles.appTitle}>
             {strings.appDescription}
@@ -113,14 +105,14 @@ export default function AboutScreen() {
           <Text style={styles.sectionTitle}>{strings.application}</Text>
           
           {renderInfoItem(
-            <Smartphone size={20} color={theme.colors.primary} />,
+            <Smartphone size={20} color="#009999" />,
             strings.version,
             `${strings.version} ${appVersion}`,
             handleVersionPress
           )}
 
           {renderInfoItem(
-            <Shield size={20} color={theme.colors.primary} />,
+            <Shield size={20} color="#009999" />,
             strings.privacy,
             strings.dataProtection,
             handlePrivacyPress
@@ -132,14 +124,14 @@ export default function AboutScreen() {
           <Text style={styles.sectionTitle}>{strings.compliance}</Text>
           
           {renderInfoItem(
-            <FileText size={20} color={theme.colors.primary} />,
+            <FileText size={20} color="#009999" />,
             'NF S61-933 Annexe H',
             strings.consultDocument,
             handleOpenPDF
           )}
 
           {renderInfoItem(
-            <Calculator size={20} color={theme.colors.success} />,
+            <Calculator size={20} color="#10B981" />,
             strings.complianceCalculations,
             'Formules et algorithmes utilisés',
             handleCalculationsPress
@@ -178,7 +170,7 @@ export default function AboutScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <CheckCircle size={32} color={theme.colors.success} />
+              <CheckCircle size={32} color="#10B981" />
               <Text style={styles.modalTitle}>{strings.appUpToDate}</Text>
             </View>
             <Text style={styles.modalText}>
@@ -204,10 +196,10 @@ export default function AboutScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Shield size={32} color={theme.colors.primary} />
+              <Shield size={32} color="#009999" />
               <Text style={styles.modalTitle}>{strings.privacyTitle}</Text>
             </View>
-            <ScrollView style={styles.modalScrollView} showsVerticalScrollIndicator={false}>
+            <ScrollView style={styles.modalScrollView}>
               <Text style={styles.modalText}>
                 <Text style={styles.modalBold}>{strings.unofficialApp}{'\n'}</Text>
                 {strings.unofficialAppDesc}
@@ -238,13 +230,13 @@ export default function AboutScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.calculationsModalContent}>
             <View style={styles.modalHeader}>
-              <Calculator size={32} color={theme.colors.success} />
+              <Calculator size={32} color="#10B981" />
               <Text style={styles.modalTitle}>Calculs de conformité</Text>
               <TouchableOpacity 
                 onPress={() => setCalculationsModalVisible(false)}
                 style={styles.closeButton}
               >
-                <X size={20} color={theme.colors.textSecondary} />
+                <X size={20} color="#6B7280" />
               </TouchableOpacity>
             </View>
             
@@ -284,7 +276,7 @@ export default function AboutScreen() {
                   <View style={styles.criteriaItem}>
                     <View style={[styles.criteriaIndicator, { backgroundColor: '#F59E0B' }]} />
                     <View style={styles.criteriaContent}>
-                      <Text style={styles.criteriaLabel}>Acceptable (10% {'<'} |Écart| ≤ 20%)</Text>
+                      <Text style={styles.criteriaLabel}>Acceptable (10% &lt; |Écart| ≤ 20%)</Text>
                       <Text style={styles.criteriaDescription}>
                         Un écart compris entre ±10% et ±20% conduit à signaler cette dérive, par une proposition d'action corrective à l'exploitant ou au chef d'établissement.
                       </Text>
@@ -294,7 +286,7 @@ export default function AboutScreen() {
                   <View style={styles.criteriaItem}>
                     <View style={[styles.criteriaIndicator, { backgroundColor: '#EF4444' }]} />
                     <View style={styles.criteriaContent}>
-                      <Text style={styles.criteriaLabel}>Non conforme (|Écart| {'>'} 20%)</Text>
+                      <Text style={styles.criteriaLabel}>Non conforme (|Écart| &gt; 20%)</Text>
                       <Text style={styles.criteriaDescription}>
                         Un écart supérieur à ±20% doit conduire à une action corrective obligatoire, la valeur étant jugée non conforme à la mise en service.
                       </Text>
@@ -331,7 +323,7 @@ export default function AboutScreen() {
                     Écart = ((3450 - 3000) / 3000) × 100 = +15%
                   </Text>
                   <Text style={styles.exampleResult}>
-                    ⚠️ Résultat : <Text style={{ color: '#F59E0B', fontWeight: 'bold' }}>Acceptable</Text> (10% {'<'} |15%| ≤ 20%)
+                    ⚠️ Résultat : <Text style={{ color: '#F59E0B', fontWeight: 'bold' }}>Acceptable</Text> (10% &lt; |15%| ≤ 20%)
                   </Text>
                 </View>
 
@@ -345,7 +337,7 @@ export default function AboutScreen() {
                     Écart = ((3000 - 4000) / 4000) × 100 = -25%
                   </Text>
                   <Text style={styles.exampleResult}>
-                    ❌ Résultat : <Text style={{ color: '#EF4444', fontWeight: 'bold' }}>Non conforme</Text> (|25%| {'>'} 20%)
+                    ❌ Résultat : <Text style={{ color: '#EF4444', fontWeight: 'bold' }}>Non conforme</Text> (|25%| &gt; 20%)
                   </Text>
                 </View>
               </View>
@@ -355,7 +347,7 @@ export default function AboutScreen() {
                 <Text style={styles.calculationTitle}>🔧 Algorithme de validation</Text>
                 <View style={styles.algorithmContainer}>
                   <Text style={styles.algorithmStep}>1. Vérification des données d'entrée</Text>
-                  <Text style={styles.algorithmDetail}>   • Débit de référence > 0</Text>
+                  <Text style={styles.algorithmDetail}>   • Débit de référence &gt; 0</Text>
                   <Text style={styles.algorithmDetail}>   • Débit mesuré ≥ 0</Text>
                   
                   <Text style={styles.algorithmStep}>2. Calcul de l'écart relatif</Text>
@@ -363,8 +355,8 @@ export default function AboutScreen() {
                   
                   <Text style={styles.algorithmStep}>3. Détermination du statut</Text>
                   <Text style={styles.algorithmDetail}>   • Si |Écart| ≤ 10% → Fonctionnel</Text>
-                  <Text style={styles.algorithmDetail}>   • Si 10% {'<'} |Écart| ≤ 20% → Acceptable</Text>
-                  <Text style={styles.algorithmDetail}>   • Si |Écart| {'>'} 20% → Non conforme</Text>
+                  <Text style={styles.algorithmDetail}>   • Si 10% &lt; |Écart| ≤ 20% → Acceptable</Text>
+                  <Text style={styles.algorithmDetail}>   • Si |Écart| &gt; 20% → Non conforme</Text>
                 </View>
               </View>
 
@@ -406,7 +398,7 @@ export default function AboutScreen() {
                 onPress={() => setUpcomingFeaturesModalVisible(false)}
                 style={styles.closeButton}
               >
-                <X size={20} color={theme.colors.textSecondary} />
+                <X size={20} color="#6B7280" />
               </TouchableOpacity>
             </View>
             
@@ -418,7 +410,7 @@ export default function AboutScreen() {
               {/* Introduction */}
               <View style={styles.upcomingIntro}>
                 <Text style={styles.upcomingIntroText}>
-                  Découvrez les futures fonctionnalités qui arriveront dans l'application Siemens CalcConform.
+                  Découvrez les futures fonctionnalités qui arriveront dans l'application Siemens Smoke Extraction Calculator.
                 </Text>
               </View>
 
@@ -507,6 +499,16 @@ export default function AboutScreen() {
                 <Text style={styles.featureSectionTitle}>✨ Expérience utilisateur</Text>
                 
                 <View style={styles.featureItem}>
+                  <Text style={styles.featureIcon}>🌙</Text>
+                  <View style={styles.featureContent}>
+                    <Text style={styles.featureTitle}>Mode sombre complet</Text>
+                    <Text style={styles.featureDescription}>
+                      Interface adaptée pour le travail de nuit avec réduction de la fatigue oculaire et économie de batterie.
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.featureItem}>
                   <Text style={styles.featureIcon}>♿</Text>
                   <View style={styles.featureContent}>
                     <Text style={styles.featureTitle}>Accessibilité renforcée</Text>
@@ -552,10 +554,10 @@ export default function AboutScreen() {
   );
 }
 
-const createStyles = (theme: any) => StyleSheet.create({
+const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
+    backgroundColor: '#F9FAFB',
   },
   content: {
     flex: 1,
@@ -572,7 +574,7 @@ const createStyles = (theme: any) => StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 20,
-    backgroundColor: theme.colors.primary + '20',
+    backgroundColor: '#F0FDFA',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
@@ -580,7 +582,7 @@ const createStyles = (theme: any) => StyleSheet.create({
   appTitle: {
     fontSize: 20,
     fontFamily: 'Inter-SemiBold',
-    color: theme.colors.text,
+    color: '#111827',
     textAlign: 'center',
     marginBottom: 8,
     lineHeight: 28,
@@ -588,13 +590,13 @@ const createStyles = (theme: any) => StyleSheet.create({
   developer: {
     fontSize: 16,
     fontFamily: 'Inter-Medium',
-    color: theme.colors.primary,
+    color: '#009999',
     marginBottom: 8,
   },
   copyright: {
     fontSize: 14,
     fontFamily: 'Inter-Regular',
-    color: theme.colors.textSecondary,
+    color: '#6B7280',
   },
   section: {
     marginBottom: 24,
@@ -602,14 +604,14 @@ const createStyles = (theme: any) => StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontFamily: 'Inter-SemiBold',
-    color: theme.colors.text,
+    color: '#111827',
     marginBottom: 12,
   },
   infoItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: theme.colors.surface,
+    backgroundColor: '#ffffff',
     borderRadius: 12,
     padding: 16,
     marginBottom: 8,
@@ -628,7 +630,7 @@ const createStyles = (theme: any) => StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 10,
-    backgroundColor: theme.colors.primary + '20',
+    backgroundColor: '#F0FDFA',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -639,12 +641,12 @@ const createStyles = (theme: any) => StyleSheet.create({
   infoTitle: {
     fontSize: 16,
     fontFamily: 'Inter-Medium',
-    color: theme.colors.text,
+    color: '#111827',
   },
   infoSubtitle: {
     fontSize: 14,
     fontFamily: 'Inter-Regular',
-    color: theme.colors.textSecondary,
+    color: '#6B7280',
     marginTop: 2,
   },
   modalOverlay: {
@@ -655,7 +657,7 @@ const createStyles = (theme: any) => StyleSheet.create({
     padding: 20,
   },
   modalContent: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: '#ffffff',
     borderRadius: 16,
     padding: 24,
     width: '100%',
@@ -664,7 +666,7 @@ const createStyles = (theme: any) => StyleSheet.create({
   },
   // Modal des calculs de conformité optimisé pour mobile SANS BARRE DE SCROLL
   calculationsModalContent: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: '#ffffff',
     borderRadius: 16,
     padding: 20,
     width: '100%',
@@ -674,7 +676,7 @@ const createStyles = (theme: any) => StyleSheet.create({
   },
   // Modal des prochaines nouveautés optimisé pour mobile SANS BARRE DE SCROLL
   upcomingFeaturesModalContent: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: '#ffffff',
     borderRadius: 16,
     padding: 20,
     width: '100%',
@@ -691,7 +693,7 @@ const createStyles = (theme: any) => StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontFamily: 'Inter-SemiBold',
-    color: theme.colors.text,
+    color: '#111827',
     flex: 1,
     marginLeft: 12,
   },
@@ -722,13 +724,13 @@ const createStyles = (theme: any) => StyleSheet.create({
   modalText: {
     fontSize: 14,
     fontFamily: 'Inter-Regular',
-    color: theme.colors.textSecondary,
+    color: '#374151',
     lineHeight: 20,
     marginBottom: 20,
   },
   modalBold: {
     fontFamily: 'Inter-SemiBold',
-    color: theme.colors.text,
+    color: '#111827',
   },
   modalButton: {
     marginTop: 8,
@@ -743,32 +745,32 @@ const createStyles = (theme: any) => StyleSheet.create({
     marginBottom: 20,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.separator,
+    borderBottomColor: '#F3F4F6',
   },
   calculationTitle: {
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
-    color: theme.colors.text,
+    color: '#111827',
     marginBottom: 10,
   },
   formulaContainer: {
-    backgroundColor: theme.colors.primary + '20',
+    backgroundColor: '#F0FDFA',
     borderRadius: 8,
     padding: 12,
     marginBottom: 8,
     borderLeftWidth: 4,
-    borderLeftColor: theme.colors.success,
+    borderLeftColor: '#10B981',
   },
   formulaText: {
     fontSize: 13,
     fontFamily: 'Inter-Medium',
-    color: theme.colors.primary,
+    color: '#047857',
     textAlign: 'center',
   },
   calculationDescription: {
     fontSize: 12,
     fontFamily: 'Inter-Regular',
-    color: theme.colors.textSecondary,
+    color: '#6B7280',
     lineHeight: 16,
   },
   criteriaContainer: {
@@ -791,17 +793,17 @@ const createStyles = (theme: any) => StyleSheet.create({
   criteriaLabel: {
     fontSize: 13,
     fontFamily: 'Inter-SemiBold',
-    color: theme.colors.text,
+    color: '#111827',
     marginBottom: 3,
   },
   criteriaDescription: {
     fontSize: 11,
     fontFamily: 'Inter-Regular',
-    color: theme.colors.textSecondary,
+    color: '#6B7280',
     lineHeight: 15,
   },
   exampleContainer: {
-    backgroundColor: theme.colors.surfaceSecondary,
+    backgroundColor: '#F9FAFB',
     borderRadius: 8,
     padding: 10,
     marginBottom: 10,
@@ -809,78 +811,78 @@ const createStyles = (theme: any) => StyleSheet.create({
   exampleTitle: {
     fontSize: 13,
     fontFamily: 'Inter-SemiBold',
-    color: theme.colors.text,
+    color: '#111827',
     marginBottom: 5,
   },
   exampleData: {
     fontSize: 11,
     fontFamily: 'Inter-Regular',
-    color: theme.colors.textSecondary,
+    color: '#374151',
     marginBottom: 3,
   },
   exampleCalculation: {
     fontSize: 11,
     fontFamily: 'Inter-Medium',
-    color: theme.colors.primary,
+    color: '#009999',
     marginBottom: 5,
     fontStyle: 'italic',
   },
   exampleResult: {
     fontSize: 12,
     fontFamily: 'Inter-Medium',
-    color: theme.colors.text,
+    color: '#111827',
   },
   algorithmContainer: {
-    backgroundColor: theme.colors.surfaceSecondary,
+    backgroundColor: '#F8FAFC',
     borderRadius: 8,
     padding: 10,
   },
   algorithmStep: {
     fontSize: 12,
     fontFamily: 'Inter-SemiBold',
-    color: theme.colors.text,
+    color: '#111827',
     marginTop: 6,
     marginBottom: 3,
   },
   algorithmDetail: {
     fontSize: 11,
     fontFamily: 'Inter-Regular',
-    color: theme.colors.textSecondary,
+    color: '#6B7280',
     marginBottom: 2,
   },
   technicalNote: {
-    backgroundColor: theme.colors.warning + '20',
+    backgroundColor: '#FEF3C7',
     borderRadius: 8,
     padding: 10,
     borderLeftWidth: 4,
-    borderLeftColor: theme.colors.warning,
+    borderLeftColor: '#F59E0B',
   },
   technicalNoteTitle: {
     fontSize: 13,
     fontFamily: 'Inter-SemiBold',
-    color: theme.colors.warning,
+    color: '#92400E',
     marginBottom: 5,
   },
   technicalNoteText: {
     fontSize: 11,
     fontFamily: 'Inter-Regular',
-    color: theme.colors.warning,
+    color: '#92400E',
     lineHeight: 15,
   },
 
   // Styles pour les prochaines nouveautés - VERSION CORRIGÉE
   upcomingIntro: {
-    backgroundColor: theme.colors.primary + '20',
+    backgroundColor: '#F0FDFA',
     borderRadius: 12,
     padding: 16,
     marginBottom: 20,
     borderLeftWidth: 4,
-    borderLeftColor: theme.colors.primary,
+    borderLeftColor: '#009999',
   },
   upcomingIntroText: {
     fontSize: 14,
     fontFamily: 'Inter-Medium',
-    color: theme.colors.primary,
+    color: '#047857',
     lineHeight: 20,
     textAlign: 'center',
   },
@@ -888,19 +890,19 @@ const createStyles = (theme: any) => StyleSheet.create({
     marginBottom: 20,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.separator,
+    borderBottomColor: '#F3F4F6',
   },
   featureSectionTitle: {
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
-    color: theme.colors.text,
+    color: '#111827',
     marginBottom: 14,
   },
   featureItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     marginBottom: 14,
-    backgroundColor: theme.colors.surfaceSecondary,
+    backgroundColor: '#F9FAFB',
     borderRadius: 12,
     padding: 14,
   },
@@ -915,13 +917,13 @@ const createStyles = (theme: any) => StyleSheet.create({
   featureTitle: {
     fontSize: 15,
     fontFamily: 'Inter-SemiBold',
-    color: theme.colors.text,
+    color: '#111827',
     marginBottom: 5,
   },
   featureDescription: {
     fontSize: 13,
     fontFamily: 'Inter-Regular',
-    color: theme.colors.textSecondary,
+    color: '#6B7280',
     lineHeight: 18,
   },
 });
