@@ -670,10 +670,7 @@ export default function ZoneDetailScreen() {
                 styles.selectAllButtonText,
           {/* Nom du volet cliquable pour édition directe */}
           <TouchableOpacity 
-            style={[
-              styles.shutterNameContainer,
-              selectionMode ? styles.shutterNameContainerSelection : null
-            ]}
+            style={[styles.shutterNameContainer, selectionMode ? styles.shutterNameContainerActive : null]}
               styles.shutterNameContainer,
               selectionMode ? styles.shutterNameContainerSelection : null
             ]}
