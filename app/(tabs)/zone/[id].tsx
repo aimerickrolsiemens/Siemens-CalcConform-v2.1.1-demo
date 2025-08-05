@@ -1,70 +1,61 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, TextInput, useColorScheme } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, TextInput, Platform, Animated } from 'react-native';
 import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
-import { Plus, Settings, Copy, Clipboard, Filter, Star, Trash2, SquareCheck as CheckSquare, Square, MessageSquare } from 'lucide-react-native';
+import { Plus, Settings, Wind, Star, Trash2, SquareCheck as CheckSquare, Square, X, Filter } from 'lucide-react-native';
 import { Header } from '@/components/Header';
 import { Button } from '@/components/Button';
 import { ComplianceIndicator } from '@/components/ComplianceIndicator';
-import { Input } from '@/components/Input';
 import { Project, Building, FunctionalZone, Shutter } from '@/types';
-import { storage } from '@/utils/storage';
+import { useStorage } from '@/contexts/StorageContext';
 import { calculateCompliance, formatDeviation } from '@/utils/compliance';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useAndroidBackButton } from '@/utils/BackHandler';
+import { LoadingScreen } from '@/components/LoadingScreen';
+import { useModal } from '@/contexts/ModalContext';
 
 export default function ZoneDetailScreen() {
   const { strings } = useLanguage();
+  const { theme } = useTheme();
+  const { showModal, hideModal } = useModal();
+  const { 
+    projects, 
+    favoriteShutters, 
+    setFavoriteShutters, 
+    deleteShutter, 
+    updateShutter 
+  } = useStorage();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [zone, setZone] = useState<FunctionalZone | null>(null);
   const [building, setBuilding] = useState<Building | null>(null);
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
-  const [copiedShutter, setCopiedShutter] = useState<Shutter | null>(null);
-  
-  // NOUVEAU : Détecter le thème système
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  
-  // CORRIGÉ : États pour l'édition directe des débits - AVEC MISE À JOUR INSTANTANÉE
-  const [editingFlows, setEditingFlows] = useState<{[key: string]: {
-    referenceFlow: string;
-    measuredFlow: string;
-    hasBeenFocused: { referenceFlow: boolean; measuredFlow: boolean };
-  }}>({});
-
-  // Modal pour éditer le nom
-  const [nameEditModal, setNameEditModal] = useState<{
-    visible: boolean;
-    shutter: Shutter | null;
-    name: string;
-  }>({ visible: false, shutter: null, name: '' });
-
-  // Modal pour éditer les remarques
-  const [remarksEditModal, setRemarksEditModal] = useState<{
-    visible: boolean;
-    shutter: Shutter | null;
-    remarks: string;
-  }>({ visible: false, shutter: null, remarks: '' });
-
-  // NOUVEAU : Références pour l'auto-focus des inputs
-  const nameInputRef = useRef<TextInput>(null);
-  const remarksInputRef = useRef<TextInput>(null);
-
-  // États pour le filtre
-  const [filterVisible, setFilterVisible] = useState(false);
-  const [filter, setFilter] = useState<'all' | 'high' | 'low'>('all');
-
-  // États pour le mode sélection
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedShutters, setSelectedShutters] = useState<Set<string>>(new Set());
-  const [favoriteShutters, setFavoriteShutters] = useState<Set<string>>(new Set());
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  // Référence pour le FlatList pour le scroll automatique
-  const flatListRef = useRef<FlatList>(null);
+  // États pour les filtres
+  const [filtersVisible, setFiltersVisible] = useState(false);
+  const [shutterTypeFilter, setShutterTypeFilter] = useState<'all' | 'high' | 'low'>('all');
+  const [complianceFilter, setComplianceFilter] = useState<'all' | 'compliant' | 'acceptable' | 'non-compliant'>('all');
 
-  // Charger la zone
+  // États pour l'édition directe des débits
+  const [editingFlows, setEditingFlows] = useState<{
+    [shutterId: string]: {
+      referenceFlow: string;
+      measuredFlow: string;
+      hasBeenFocused: { referenceFlow: boolean; measuredFlow: boolean };
+    }
+  }>({});
+
+  // Configure Android back button to go back to the building screen
+  useAndroidBackButton(() => {
+    handleBack();
+    return true;
+  });
+
   const loadZone = useCallback(async () => {
     try {
-      const projects = await storage.getProjects();
       for (const proj of projects) {
         for (const bldg of proj.buildings) {
           const foundZone = bldg.functionalZones.find(z => z.id === id);
@@ -72,7 +63,18 @@ export default function ZoneDetailScreen() {
             setZone(foundZone);
             setBuilding(bldg);
             setProject(proj);
-            return;
+            
+            // Initialiser les états d'édition pour tous les volets
+            const initialEditingFlows: typeof editingFlows = {};
+            foundZone.shutters.forEach(shutter => {
+              initialEditingFlows[shutter.id] = {
+                referenceFlow: shutter.referenceFlow > 0 ? shutter.referenceFlow.toString() : '',
+                measuredFlow: shutter.measuredFlow > 0 ? shutter.measuredFlow.toString() : '',
+                hasBeenFocused: { referenceFlow: false, measuredFlow: false }
+              };
+            });
+            setEditingFlows(initialEditingFlows);
+            break;
           }
         }
       }
@@ -81,72 +83,26 @@ export default function ZoneDetailScreen() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, projects]);
 
-  // Charger les favoris
-  const loadFavorites = useCallback(async () => {
-    try {
-      const favorites = await storage.getFavoriteShutters();
-      setFavoriteShutters(new Set(favorites));
-    } catch (error) {
-      console.error('Erreur lors du chargement des favoris:', error);
-    }
-  }, []);
-
-  // NOUVEAU : Utiliser useFocusEffect pour recharger les données quand on revient sur la page
   useFocusEffect(
     useCallback(() => {
       console.log('Zone screen focused, reloading data...');
       loadZone();
-      loadFavorites();
-    }, [loadZone, loadFavorites])
+      
+      // Animation de fondu à l'entrée
+      fadeAnim.setValue(0);
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }, [loadZone])
   );
 
   useEffect(() => {
     loadZone();
-    loadFavorites();
-  }, [loadZone, loadFavorites]);
-
-  // CORRIGÉ : Initialiser l'édition pour tous les volets quand la zone change
-  useEffect(() => {
-    if (zone) {
-      const newEditingFlows: typeof editingFlows = {};
-      zone.shutters.forEach(shutter => {
-        // CORRIGÉ : Toujours mettre à jour avec les valeurs actuelles du volet
-        newEditingFlows[shutter.id] = {
-          referenceFlow: shutter.referenceFlow.toString(),
-          measuredFlow: shutter.measuredFlow.toString(),
-          hasBeenFocused: editingFlows[shutter.id]?.hasBeenFocused || { referenceFlow: false, measuredFlow: false }
-        };
-      });
-      
-      setEditingFlows(newEditingFlows);
-    }
-  }, [zone]); // CORRIGÉ : Dépendance uniquement sur zone, pas sur editingFlows pour éviter les boucles
-
-  // NOUVEAU : Auto-focus sur l'input du nom quand le modal s'ouvre
-  useEffect(() => {
-    if (nameEditModal.visible && nameInputRef.current) {
-      // Délai pour s'assurer que le modal est complètement ouvert
-      const timer = setTimeout(() => {
-        nameInputRef.current?.focus();
-      }, 300);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [nameEditModal.visible]);
-
-  // Auto-focus sur l'input des remarques quand le modal s'ouvre
-  useEffect(() => {
-    if (remarksEditModal.visible && remarksInputRef.current) {
-      // Délai pour s'assurer que le modal est complètement ouvert
-      const timer = setTimeout(() => {
-        remarksInputRef.current?.focus();
-      }, 300);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [remarksEditModal.visible]);
+  }, [loadZone]);
 
   const handleBack = () => {
     try {
@@ -178,128 +134,55 @@ export default function ZoneDetailScreen() {
   };
 
   const handleShutterPress = (shutter: Shutter) => {
-    // Si on est en mode sélection, sélectionner/désélectionner
     if (selectionMode) {
       handleShutterSelection(shutter.id);
-      return;
-    }
-
-    // Sinon, aller vers la page détaillée
-    try {
+    } else {
       router.push(`/(tabs)/shutter/${shutter.id}`);
-    } catch (error) {
-      console.error('Erreur de navigation vers volet:', error);
     }
   };
 
-  // NOUVEAU : Fonction pour éditer un volet
-  const handleEditShutter = (shutter: Shutter) => {
-    try {
-      router.push(`/(tabs)/shutter/edit/${shutter.id}`);
-    } catch (error) {
-      console.error('Erreur de navigation vers édition volet:', error);
-    }
-  };
-
-  // Copier sans pop-up
-  const handleCopyShutter = (shutter: Shutter) => {
-    setCopiedShutter(shutter);
-  };
-
-  // Coller avec scroll automatique vers le bas
-  const handlePasteShutter = async () => {
-    if (!copiedShutter || !zone) return;
-
-    try {
-      const existingNames = zone.shutters.map(s => s.name);
-      let newName = copiedShutter.name;
-      let counter = 1;
-      
-      while (existingNames.includes(newName)) {
-        const baseName = copiedShutter.name.replace(/\d+$/, '');
-        newName = `${baseName}${counter.toString().padStart(2, '0')}`;
-        counter++;
-      }
-
-      const newShutter = await storage.createShutter(zone.id, {
-        name: newName,
-        type: copiedShutter.type,
-        referenceFlow: copiedShutter.referenceFlow,
-        measuredFlow: 0,
-        remarks: copiedShutter.remarks,
-      });
-
-      if (newShutter) {
-        await loadZone();
-        
-        // Scroll automatique vers le bas après un petit délai
-        setTimeout(() => {
-          flatListRef.current?.scrollToEnd({ animated: true });
-        }, 300);
-      }
-    } catch (error) {
-      Alert.alert(strings.error, 'Impossible de coller le volet. Veuillez réessayer.');
-    }
-  };
-
-  const handleDeleteShutter = async (shutter: Shutter) => {
-    Alert.alert(
-      strings.deleteShutter,
-      `${strings.deleteShutterConfirm} "${shutter.name}" ?`,
-      [
-        { text: strings.cancel, style: 'cancel' },
-        {
-          text: strings.delete,
-          style: 'destructive',
-          onPress: async () => {
-            await storage.deleteShutter(shutter.id);
-            loadZone();
-          }
-        }
-      ]
-    );
-  };
-
-  // Fonctions pour le mode sélection
   const handleSelectionMode = () => {
     setSelectionMode(!selectionMode);
     setSelectedShutters(new Set());
   };
 
   const handleShutterSelection = (shutterId: string) => {
-    setSelectedShutters(prev => {
-      const newSelection = new Set(prev);
-      if (newSelection.has(shutterId)) {
-        newSelection.delete(shutterId);
-      } else {
-        newSelection.add(shutterId);
-      }
-      return newSelection;
-    });
+    const newSelection = new Set(selectedShutters);
+    if (newSelection.has(shutterId)) {
+      newSelection.delete(shutterId);
+    } else {
+      newSelection.add(shutterId);
+    }
+    setSelectedShutters(newSelection);
   };
 
   const handleBulkDelete = () => {
     if (selectedShutters.size === 0) return;
 
-    Alert.alert(
-      strings.delete + ' ' + strings.shutters.toLowerCase(),
-      `Êtes-vous sûr de vouloir supprimer ${selectedShutters.size} volet${selectedShutters.size > 1 ? 's' : ''} ?`,
-      [
-        { text: strings.cancel, style: 'cancel' },
-        {
-          text: strings.delete,
-          style: 'destructive',
-          onPress: async () => {
-            for (const shutterId of selectedShutters) {
-              await storage.deleteShutter(shutterId);
-            }
-            setSelectedShutters(new Set());
-            setSelectionMode(false);
-            loadZone();
-          }
+    showModal(<BulkDeleteShuttersModal 
+      count={selectedShutters.size}
+      onConfirm={() => confirmBulkDeleteShutters()}
+      onCancel={() => hideModal()}
+      strings={strings}
+    />);
+  };
+
+  const confirmBulkDeleteShutters = async () => {
+    try {
+      console.log('🗑️ Suppression en lot de', selectedShutters.size, 'volets');
+      for (const shutterId of selectedShutters) {
+        const success = await deleteShutter(shutterId);
+        if (!success) {
+          console.error('Erreur lors de la suppression du volet:', shutterId);
         }
-      ]
-    );
+      }
+      setSelectedShutters(new Set());
+      setSelectionMode(false);
+      hideModal();
+    } catch (error) {
+      console.error('Erreur lors de la suppression en lot:', error);
+      hideModal();
+    }
   };
 
   const handleBulkFavorite = async () => {
@@ -314,39 +197,66 @@ export default function ZoneDetailScreen() {
       }
     }
     
-    setFavoriteShutters(newFavorites);
-    await storage.setFavoriteShutters(Array.from(newFavorites));
+    await setFavoriteShutters(Array.from(newFavorites));
     setSelectedShutters(new Set());
     setSelectionMode(false);
   };
 
-  const handleToggleFavorite = async (shutterId: string) => {
-    setFavoriteShutters(prev => {
-      const newFavorites = new Set(prev);
-      if (newFavorites.has(shutterId)) {
-        newFavorites.delete(shutterId);
-      } else {
-        newFavorites.add(shutterId);
-      }
-      return newFavorites;
-    });
-    
-    // Sauvegarder de manière asynchrone sans bloquer l'UI
-    setTimeout(async () => {
-      try {
-        const currentFavorites = Array.from(favoriteShutters);
-        if (favoriteShutters.has(shutterId)) {
-          await storage.setFavoriteShutters(currentFavorites.filter(id => id !== shutterId));
-        } else {
-          await storage.setFavoriteShutters([...currentFavorites, shutterId]);
-        }
-      } catch (error) {
-        console.error('Erreur lors de la sauvegarde des favoris:', error);
-      }
-    }, 0);
+  const handleSelectAll = () => {
+    if (selectedShutters.size === sortedShutters.length) {
+      setSelectedShutters(new Set());
+    } else {
+      const allShutterIds = new Set(sortedShutters.map(s => s.id));
+      setSelectedShutters(allShutterIds);
+    }
   };
 
-  // CORRIGÉ : Fonctions pour l'édition directe des débits avec mise à jour instantanée
+  const handleToggleFavorite = async (shutterId: string) => {
+    const newFavorites = new Set(favoriteShutters);
+    if (newFavorites.has(shutterId)) {
+      newFavorites.delete(shutterId);
+    } else {
+      newFavorites.add(shutterId);
+    }
+    
+    await setFavoriteShutters(Array.from(newFavorites));
+  };
+
+  const handleEditShutter = (shutter: Shutter) => {
+    try {
+      router.push(`/(tabs)/shutter/edit/${shutter.id}`);
+    } catch (error) {
+      console.error('Erreur de navigation vers édition volet:', error);
+    }
+  };
+
+  const handleDeleteShutter = async (shutter: Shutter) => {
+    showModal(<DeleteShutterModal 
+      shutter={shutter}
+      onConfirm={() => confirmDeleteShutter(shutter)}
+      onCancel={() => hideModal()}
+      strings={strings}
+    />);
+  };
+
+  const confirmDeleteShutter = async (shutter: Shutter) => {
+    try {
+      console.log('🗑️ Confirmation suppression volet:', shutter.id);
+      const success = await deleteShutter(shutter.id);
+      if (success) {
+        console.log('✅ Volet supprimé avec succès');
+        hideModal();
+      } else {
+        console.error('❌ Erreur: Volet non trouvé pour la suppression');
+        hideModal();
+      }
+    } catch (error) {
+      console.error('Erreur lors de la suppression:', error);
+      hideModal();
+    }
+  };
+
+  // Fonctions pour l'édition directe des débits
   const handleFlowChange = useCallback((shutterId: string, field: 'referenceFlow' | 'measuredFlow', value: string) => {
     setEditingFlows(prev => ({
       ...prev,
@@ -357,211 +267,179 @@ export default function ZoneDetailScreen() {
     }));
   }, []);
 
-  // Fonction pour gérer le focus et l'effacement automatique du "0"
   const handleFlowFocus = useCallback((shutterId: string, field: 'referenceFlow' | 'measuredFlow') => {
-    setEditingFlows(prev => {
-      const currentEdit = prev[shutterId];
-      if (!currentEdit) return prev;
-
-      // Si c'est le premier focus ET que la valeur est "0", l'effacer
-      if (!currentEdit.hasBeenFocused[field] && currentEdit[field] === '0') {
-        return {
-          ...prev,
-          [shutterId]: {
-            ...currentEdit,
-            [field]: '', // Effacer le "0"
-            hasBeenFocused: {
-              ...currentEdit.hasBeenFocused,
-              [field]: true
-            }
-          }
-        };
-      }
-
-      // Sinon, juste marquer comme focalisé
-      return {
-        ...prev,
-        [shutterId]: {
-          ...currentEdit,
-          hasBeenFocused: {
-            ...currentEdit.hasBeenFocused,
-            [field]: true
-          }
+    setEditingFlows(prev => ({
+      ...prev,
+      [shutterId]: {
+        ...prev[shutterId],
+        hasBeenFocused: {
+          ...prev[shutterId]?.hasBeenFocused,
+          [field]: true
         }
-      };
-    });
+      }
+    }));
   }, []);
 
-  // CORRIGÉ : Sauvegarde automatique avec mise à jour instantanée de l'état local
-  const handleFlowBlur = useCallback(async (shutter: Shutter, field: 'referenceFlow' | 'measuredFlow') => {
-    const editData = editingFlows[shutter.id];
-    if (!editData) return;
+  const handleFlowBlur = useCallback(async (shutterId: string, field: 'referenceFlow' | 'measuredFlow') => {
+    const shutter = zone?.shutters.find(s => s.id === shutterId);
+    if (!shutter) return;
 
-    const refFlow = parseFloat(editData.referenceFlow);
-    const measFlow = parseFloat(editData.measuredFlow);
+    const editingData = editingFlows[shutterId];
+    if (!editingData) return;
 
-    // Validation des valeurs
+    const refFlow = parseFloat(editingData.referenceFlow) || 0;
+    const measFlow = parseFloat(editingData.measuredFlow) || 0;
+
     if (isNaN(refFlow) || refFlow < 0) {
-      // Restaurer la valeur originale en cas d'erreur
       setEditingFlows(prev => ({
         ...prev,
-        [shutter.id]: {
-          ...prev[shutter.id],
-          referenceFlow: shutter.referenceFlow.toString()
+        [shutterId]: {
+          ...prev[shutterId],
+          referenceFlow: shutter.referenceFlow > 0 ? shutter.referenceFlow.toString() : ''
         }
       }));
       return;
     }
 
     if (isNaN(measFlow) || measFlow < 0) {
-      // Restaurer la valeur originale en cas d'erreur
       setEditingFlows(prev => ({
         ...prev,
-        [shutter.id]: {
-          ...prev[shutter.id],
-          measuredFlow: shutter.measuredFlow.toString()
+        [shutterId]: {
+          ...prev[shutterId],
+          measuredFlow: shutter.measuredFlow > 0 ? shutter.measuredFlow.toString() : ''
         }
       }));
       return;
     }
 
-    // Vérifier si les valeurs ont changé
     const hasChanged = refFlow !== shutter.referenceFlow || measFlow !== shutter.measuredFlow;
     
     if (hasChanged) {
       try {
-        // CORRIGÉ : Sauvegarde automatique ET mise à jour instantanée de l'état local
-        await storage.updateShutter(shutter.id, {
+        const updatedShutter = await updateShutter(shutter.id, {
           referenceFlow: refFlow,
           measuredFlow: measFlow,
         });
         
-        // CORRIGÉ : Mise à jour instantanée de l'état local du volet SANS recharger toute la zone
-        setZone(prevZone => {
-          if (!prevZone) return prevZone;
+        if (updatedShutter) {
+          // Mise à jour instantanée de l'état local de la zone
+          setZone(prevZone => {
+            if (!prevZone) return prevZone;
+            return {
+              ...prevZone,
+              shutters: prevZone.shutters.map(s => 
+                s.id === shutterId 
+                  ? { ...s, referenceFlow: refFlow, measuredFlow: measFlow, updatedAt: new Date() }
+                  : s
+              )
+            };
+          });
           
-          return {
-            ...prevZone,
-            shutters: prevZone.shutters.map(s => 
-              s.id === shutter.id 
-                ? { ...s, referenceFlow: refFlow, measuredFlow: measFlow, updatedAt: new Date() }
-                : s
-            )
-          };
-        });
-        
-        console.log(`✅ Volet ${shutter.name} mis à jour instantanément: ${refFlow}/${measFlow}`);
+          console.log(`✅ Volet ${shutter.name} mis à jour instantanément: ${refFlow}/${measFlow}`);
+        }
         
       } catch (error) {
         console.error('Erreur lors de la sauvegarde automatique:', error);
-        // En cas d'erreur, restaurer les valeurs originales
         setEditingFlows(prev => ({
           ...prev,
-          [shutter.id]: {
-            ...prev[shutter.id],
-            referenceFlow: shutter.referenceFlow.toString(),
-            measuredFlow: shutter.measuredFlow.toString()
+          [shutterId]: {
+            ...prev[shutterId],
+            referenceFlow: shutter.referenceFlow > 0 ? shutter.referenceFlow.toString() : '',
+            measuredFlow: shutter.measuredFlow > 0 ? shutter.measuredFlow.toString() : ''
           }
         }));
       }
     }
-  }, [editingFlows]);
+  }, [editingFlows, zone, updateShutter]);
 
-  // Fonctions pour éditer le nom
-  const openNameEditModal = (shutter: Shutter) => {
-    setNameEditModal({
-      visible: true,
-      shutter,
-      name: shutter.name
-    });
-  };
-
-  const saveNameChange = async () => {
-    if (!nameEditModal.shutter || !nameEditModal.name.trim()) return;
-
-    try {
-      await storage.updateShutter(nameEditModal.shutter.id, {
-        name: nameEditModal.name.trim(),
-      });
-      
-      setNameEditModal({ visible: false, shutter: null, name: '' });
-      loadZone();
-    } catch (error) {
-      Alert.alert(strings.error, 'Impossible de modifier le nom');
-    }
-  };
-
-  // Fonctions pour éditer les remarques
-  const openRemarksEditModal = (shutter: Shutter) => {
-    setRemarksEditModal({
-      visible: true,
-      shutter,
-      remarks: shutter.remarks || ''
-    });
-  };
-
-  const saveRemarksChange = async () => {
-    if (!remarksEditModal.shutter) return;
-
-    try {
-      await storage.updateShutter(remarksEditModal.shutter.id, {
-        remarks: remarksEditModal.remarks.trim() || undefined,
-      });
-      
-      setRemarksEditModal({ visible: false, shutter: null, remarks: '' });
-      loadZone();
-    } catch (error) {
-      Alert.alert(strings.error, 'Impossible de modifier les remarques');
-    }
-  };
-
-  // Fonction pour filtrer les volets
+  // Trier les volets : favoris en premier
   const getFilteredShutters = () => {
     if (!zone) return [];
     
-    let filtered = zone.shutters;
+    let filtered = [...zone.shutters];
     
-    switch (filter) {
-      case 'high':
-        filtered = zone.shutters.filter(s => s.type === 'high');
-        break;
-      case 'low':
-        filtered = zone.shutters.filter(s => s.type === 'low');
-        break;
-      default:
-        filtered = zone.shutters;
+    // Filtre par type de volet
+    if (shutterTypeFilter !== 'all') {
+      filtered = filtered.filter(shutter => shutter.type === shutterTypeFilter);
     }
-
-    // Trier les favoris en premier
-    return [...filtered].sort((a, b) => {
-      const aIsFavorite = favoriteShutters.has(a.id);
-      const bIsFavorite = favoriteShutters.has(b.id);
-      
-      if (aIsFavorite && !bIsFavorite) return -1;
-      if (!aIsFavorite && bIsFavorite) return 1;
-      return 0;
-    });
+    
+    // Filtre par niveau de conformité
+    if (complianceFilter !== 'all') {
+      filtered = filtered.filter(shutter => {
+        const editingData = editingFlows[shutter.id];
+        const currentRefFlow = parseFloat(editingData?.referenceFlow || '0') || 0;
+        const currentMeasFlow = parseFloat(editingData?.measuredFlow || '0') || 0;
+        const compliance = calculateCompliance(currentRefFlow, currentMeasFlow);
+        return compliance.status === complianceFilter;
+      });
+    }
+    
+    return filtered;
   };
 
-  // Fonction pour obtenir le nombre de volets par type
-  const getShutterCounts = () => {
-    if (!zone) return { high: 0, low: 0, total: 0 };
+  const sortedShutters = getFilteredShutters().sort((a, b) => {
+    const aIsFavorite = favoriteShutters.includes(a.id);
+    const bIsFavorite = favoriteShutters.includes(b.id);
     
+    if (aIsFavorite && !bIsFavorite) return -1;
+    if (!aIsFavorite && bIsFavorite) return 1;
+    return 0;
+  });
+
+  // Obtenir les statistiques pour les filtres
+  const getShutterStats = () => {
+    if (!zone) return { total: 0, high: 0, low: 0, compliant: 0, acceptable: 0, nonCompliant: 0 };
+    
+    const total = zone.shutters.length;
     const high = zone.shutters.filter(s => s.type === 'high').length;
     const low = zone.shutters.filter(s => s.type === 'low').length;
-    const total = zone.shutters.length;
     
-    return { high, low, total };
+    let compliant = 0;
+    let acceptable = 0;
+    let nonCompliant = 0;
+    
+    zone.shutters.forEach(shutter => {
+      const editingData = editingFlows[shutter.id];
+      const currentRefFlow = parseFloat(editingData?.referenceFlow || '0') || 0;
+      const currentMeasFlow = parseFloat(editingData?.measuredFlow || '0') || 0;
+      const compliance = calculateCompliance(currentRefFlow, currentMeasFlow);
+      
+      switch (compliance.status) {
+        case 'compliant':
+          compliant++;
+          break;
+        case 'acceptable':
+          acceptable++;
+          break;
+        case 'non-compliant':
+          nonCompliant++;
+          break;
+      }
+    });
+    
+    return { total, high, low, compliant, acceptable, nonCompliant };
   };
+
+  const shutterStats = getShutterStats();
+
+  const toggleFilters = () => {
+    setFiltersVisible(!filtersVisible);
+  };
+
+  const clearFilters = () => {
+    setShutterTypeFilter('all');
+    setComplianceFilter('all');
+  };
+
+  const hasActiveFilters = shutterTypeFilter !== 'all' || complianceFilter !== 'all';
 
   const renderShutter = ({ item }: { item: Shutter }) => {
     const isSelected = selectedShutters.has(item.id);
-    const isFavorite = favoriteShutters.has(item.id);
-    const editData = editingFlows[item.id];
+    const isFavorite = favoriteShutters.includes(item.id);
+    const editingData = editingFlows[item.id];
     
-    // CORRIGÉ : Calculer la conformité avec les valeurs actuelles (éditées ou du volet mis à jour)
-    const currentRefFlow = editData ? parseFloat(editData.referenceFlow) || 0 : item.referenceFlow;
-    const currentMeasFlow = editData ? parseFloat(editData.measuredFlow) || 0 : item.measuredFlow;
+    const currentRefFlow = parseFloat(editingData?.referenceFlow || '0') || 0;
+    const currentMeasFlow = parseFloat(editingData?.measuredFlow || '0') || 0;
     const compliance = calculateCompliance(currentRefFlow, currentMeasFlow);
 
     return (
@@ -579,67 +457,66 @@ export default function ZoneDetailScreen() {
           }
         }}
       >
+        {/* En-tête du volet */}
         <View style={styles.shutterHeader}>
-          <View style={styles.shutterHeaderLeft}>
+          <View style={styles.shutterTitleSection}>
             {selectionMode && (
               <TouchableOpacity 
                 style={styles.checkbox}
                 onPress={() => handleShutterSelection(item.id)}
               >
                 {isSelected ? (
-                  <CheckSquare size={20} color="#009999" />
+                  <CheckSquare size={18} color={theme.colors.primary} />
                 ) : (
-                  <Square size={20} color="#9CA3AF" />
+                  <Square size={18} color={theme.colors.textTertiary} />
                 )}
               </TouchableOpacity>
             )}
-            
-            <TouchableOpacity 
-              style={[styles.shutterNameContainer, selectionMode && styles.shutterNameContainerSelection]}
-              onPress={() => !selectionMode && openNameEditModal(item)}
-              disabled={selectionMode}
-            >
-              <Text style={styles.shutterName}>{item.name}</Text>
-              {!selectionMode && <Text style={styles.editIcon}>✏️</Text>}
-            </TouchableOpacity>
+            <Text style={styles.shutterName}>{item.name}</Text>
+            <View style={[styles.shutterTypeBadge, { 
+              backgroundColor: item.type === 'high' ? '#10B981' : '#F59E0B' 
+            }]}>
+              <Text style={styles.shutterTypeText}>
+                {item.type === 'high' ? 'VH' : 'VB'}
+              </Text>
+            </View>
           </View>
           
-          <View style={styles.shutterHeaderRight}>
-            <Text style={styles.shutterType}>
-              {item.type === 'high' ? strings.shutterHigh : strings.shutterLow}
-            </Text>
-            {!selectionMode && (
-              <>
-                <TouchableOpacity
-                  style={styles.favoriteButton}
-                  onPress={() => handleToggleFavorite(item.id)}
-                >
-                  <Star 
-                    size={14} 
-                    color={isFavorite ? "#F59E0B" : "#9CA3AF"} 
-                    fill={isFavorite ? "#F59E0B" : "none"}
-                  />
-                </TouchableOpacity>
-                {/* NOUVEAU : Bouton paramètres pour le volet */}
-                <TouchableOpacity
-                  style={styles.settingsButton}
-                  onPress={() => handleEditShutter(item)}
-                >
-                  <Settings size={14} color="#009999" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.copyButton}
-                  onPress={() => handleCopyShutter(item)}
-                >
-                  <Copy size={16} color="#009999" />
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
+          {!selectionMode && (
+            <View style={styles.actionButtons}>
+              <TouchableOpacity 
+                style={styles.actionButton}
+                onPress={() => handleToggleFavorite(item.id)}
+              >
+                <Star 
+                  size={14} 
+                  color={isFavorite ? "#F59E0B" : theme.colors.textTertiary} 
+                  fill={isFavorite ? "#F59E0B" : "none"}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.actionButton}
+                onPress={() => handleEditShutter(item)}
+              >
+                <Settings size={14} color={theme.colors.primary} />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.actionButton}
+                onPress={() => handleDeleteShutter(item)}
+              >
+                <Trash2 size={14} color={theme.colors.error} />
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
-        {/* CORRIGÉ : Interface d'édition directe avec valeurs actuelles du volet */}
-        <View style={styles.flowEditingContainer}>
+        {/* Section d'édition des mesures de débit */}
+        <TouchableOpacity 
+          style={styles.flowEditingContainer}
+          activeOpacity={1}
+          onPress={(e) => e.stopPropagation()}
+        >
+          <Text style={styles.flowSectionTitle}>Mesures de débit</Text>
           <View style={styles.flowEditingRow}>
             <View style={styles.flowEditingField}>
               <View style={styles.flowLabelContainer}>
@@ -648,18 +525,16 @@ export default function ZoneDetailScreen() {
                 <Text style={styles.flowEditingUnit}>({strings.cubicMeterPerHour})</Text>
               </View>
               <TextInput
-                style={[
-                  styles.flowEditingInput,
-                  isDark && styles.flowEditingInputDark
-                ]}
-                value={editData?.referenceFlow || item.referenceFlow.toString()}
+                style={styles.flowEditingInput}
+                value={editingData?.referenceFlow || ''}
                 onChangeText={(text) => handleFlowChange(item.id, 'referenceFlow', text)}
                 onFocus={() => handleFlowFocus(item.id, 'referenceFlow')}
-                onBlur={() => handleFlowBlur(item, 'referenceFlow')}
+                onBlur={() => handleFlowBlur(item.id, 'referenceFlow')}
                 keyboardType="numeric"
-                placeholder="0"
-                placeholderTextColor={isDark ? "#6B7280" : "#9CA3AF"}
+                placeholder="Ex: 5000"
+                placeholderTextColor={theme.colors.textTertiary}
                 selectTextOnFocus={true}
+                onPressIn={(e) => e.stopPropagation()}
               />
             </View>
             
@@ -669,18 +544,16 @@ export default function ZoneDetailScreen() {
                 <Text style={styles.flowEditingUnit}>({strings.cubicMeterPerHour})</Text>
               </View>
               <TextInput
-                style={[
-                  styles.flowEditingInput,
-                  isDark && styles.flowEditingInputDark
-                ]}
-                value={editData?.measuredFlow || item.measuredFlow.toString()}
+                style={styles.flowEditingInput}
+                value={editingData?.measuredFlow || ''}
                 onChangeText={(text) => handleFlowChange(item.id, 'measuredFlow', text)}
                 onFocus={() => handleFlowFocus(item.id, 'measuredFlow')}
-                onBlur={() => handleFlowBlur(item, 'measuredFlow')}
+                onBlur={() => handleFlowBlur(item.id, 'measuredFlow')}
                 keyboardType="numeric"
-                placeholder="0"
-                placeholderTextColor={isDark ? "#6B7280" : "#9CA3AF"}
+                placeholder="Ex: 4800"
+                placeholderTextColor={theme.colors.textTertiary}
                 selectTextOnFocus={true}
+                onPressIn={(e) => e.stopPropagation()}
               />
             </View>
             
@@ -696,38 +569,29 @@ export default function ZoneDetailScreen() {
               </View>
             </View>
           </View>
-        </View>
+        </TouchableOpacity>
 
         {/* Indicateur de conformité */}
-        <View style={styles.complianceContainer}>
+        <View style={styles.complianceSection}>
           <ComplianceIndicator compliance={compliance} size="small" />
         </View>
 
-        {/* Bouton remarques fin sur toute la largeur */}
-        {!selectionMode && (
-          <TouchableOpacity
-            style={styles.remarksButton}
-            onPress={() => openRemarksEditModal(item)}
-          >
-            <MessageSquare size={14} color="#6B7280" />
-            <Text style={styles.remarksButtonText}>
-              {item.remarks ? `Remarque: ${item.remarks}` : 'Ajouter une remarque'}
+        {/* Remarques si elles existent */}
+        {item.remarks && (
+          <View style={styles.remarksSection}>
+            <Text style={styles.remarksText} numberOfLines={2}>
+              💬 {item.remarks}
             </Text>
-          </TouchableOpacity>
+          </View>
         )}
-      </TouchableOpacity>
+        </TouchableOpacity>
     );
   };
 
+  const styles = createStyles(theme);
+
   if (loading) {
-    return (
-      <View style={styles.container}>
-        <Header title={strings.loading} onBack={handleBack} />
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>{strings.loadingData}</Text>
-        </View>
-      </View>
-    );
+    return <LoadingScreen title={strings.loading} message={strings.loadingData} />;
   }
 
   if (!zone || !building || !project) {
@@ -741,40 +605,31 @@ export default function ZoneDetailScreen() {
     );
   }
 
-  const filteredShutters = getFilteredShutters();
-  const shutterCounts = getShutterCounts();
+  const locationInfo = project.city ? `${building.name} • ${project.name} • ${project.city}` : `${building.name} • ${project.name}`;
 
   return (
     <View style={styles.container}>
       <Header
         title={zone.name}
-        subtitle={`${building.name} • ${project.name}`}
+        subtitle={locationInfo}
         onBack={handleBack}
         rightComponent={
-          <View style={styles.headerContainer}>
-            {/* Première ligne avec les boutons principaux */}
-            <View style={styles.headerActions}>
-              {copiedShutter && (
-                <TouchableOpacity onPress={handlePasteShutter} style={styles.actionButton}>
-                  <Clipboard size={20} color="#10B981" />
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity onPress={() => setFilterVisible(!filterVisible)} style={styles.actionButton}>
-                <Filter size={20} color="#009999" />
+          <View style={styles.headerActions}>
+            <View style={styles.topButtonsRow}>
+              <TouchableOpacity onPress={toggleFilters} style={styles.actionButton}>
+                <Filter size={18} color={hasActiveFilters ? "#F59E0B" : theme.colors.primary} />
               </TouchableOpacity>
               <TouchableOpacity onPress={handleEditZone} style={styles.actionButton}>
-                <Settings size={20} color="#009999" />
+                <Settings size={18} color={theme.colors.primary} />
               </TouchableOpacity>
               <TouchableOpacity onPress={handleCreateShutter} style={styles.actionButton}>
-                <Plus size={24} color="#009999" />
+                <Plus size={22} color={theme.colors.primary} />
               </TouchableOpacity>
             </View>
-            
-            {/* Deuxième ligne avec le bouton sélection */}
-            <View style={styles.selectionRow}>
+            <View style={styles.selectionButtonRow}>
               <TouchableOpacity onPress={handleSelectionMode} style={styles.selectionButton}>
                 <Text style={styles.selectionButtonText}>
-                  {selectionMode ? strings.cancel : 'Sélect'}
+                  {selectionMode ? strings.cancel : 'Sélect.'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -782,84 +637,212 @@ export default function ZoneDetailScreen() {
         }
       />
 
-      {/* Barre d'outils de sélection */}
       {selectionMode && (
         <View style={styles.selectionToolbar}>
           <Text style={styles.selectionCount}>
             {selectedShutters.size} {strings.selected}{selectedShutters.size > 1 ? 's' : ''}
           </Text>
-          <View style={styles.selectionActions}>
+          <View style={styles.selectionActionsColumn}>
             <TouchableOpacity 
-              style={styles.toolbarButton}
-              onPress={handleBulkFavorite}
-              disabled={selectedShutters.size === 0}
+              style={[
+                styles.selectAllButton,
+                selectedShutters.size === sortedShutters.length
+                  ? styles.selectAllButtonActive 
+                  : styles.selectAllButtonInactive
+              ]}
+              onPress={handleSelectAll}
             >
-              <Star size={20} color={selectedShutters.size > 0 ? "#F59E0B" : "#9CA3AF"} />
-              <Text style={[styles.toolbarButtonText, { color: selectedShutters.size > 0 ? "#F59E0B" : "#9CA3AF" }]}>
-                {strings.favorites}
+              {selectedShutters.size === sortedShutters.length ? (
+                <CheckSquare size={20} color="#FFFFFF" />
+              ) : (
+                <Square size={20} color={theme.colors.textTertiary} />
+              )}
+              <Text style={[
+                styles.selectAllButtonText,
+                selectedShutters.size === sortedShutters.length
+                  ? styles.selectAllButtonTextActive 
+                  : styles.selectAllButtonTextInactive
+              ]}>
+                {selectedShutters.size === sortedShutters.length ? 'Tout désélectionner' : 'Tout sélectionner'}
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.toolbarButton}
-              onPress={handleBulkDelete}
-              disabled={selectedShutters.size === 0}
-            >
-              <Trash2 size={20} color={selectedShutters.size > 0 ? "#EF4444" : "#9CA3AF"} />
-              <Text style={[styles.toolbarButtonText, { color: selectedShutters.size > 0 ? "#EF4444" : "#9CA3AF" }]}>
-                {strings.delete}
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.selectionActionsRow}>
+              <TouchableOpacity 
+                style={styles.toolbarButton}
+                onPress={handleBulkFavorite}
+                disabled={selectedShutters.size === 0}
+              >
+                <Star size={20} color={selectedShutters.size > 0 ? "#F59E0B" : theme.colors.textTertiary} />
+                <Text style={[styles.toolbarButtonText, { color: selectedShutters.size > 0 ? "#F59E0B" : theme.colors.textTertiary }]}>
+                  {strings.favorites}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.toolbarButton}
+                onPress={handleBulkDelete}
+                disabled={selectedShutters.size === 0}
+              >
+                <Trash2 size={20} color={selectedShutters.size > 0 ? theme.colors.error : theme.colors.textTertiary} />
+                <Text style={[styles.toolbarButtonText, { color: selectedShutters.size > 0 ? theme.colors.error : theme.colors.textTertiary }]}>
+                  {strings.delete}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Barre de filtres */}
+      {filtersVisible && (
+        <View style={styles.filterBar}>
+          <View style={styles.filterHeader}>
+            <Text style={styles.filterTitle}>🔍 Filtres</Text>
+            {hasActiveFilters && (
+              <TouchableOpacity style={styles.clearFiltersButton} onPress={clearFilters}>
+                <X size={16} color={theme.colors.error} />
+                <Text style={styles.clearFiltersText}>Effacer</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Filtre par type de volet */}
+          <View style={styles.filterSection}>
+            <Text style={styles.filterSectionTitle}>🔲 Type de volet</Text>
+            <View style={styles.filterButtons}>
+              <TouchableOpacity
+                style={[
+                  styles.filterButton,
+                  shutterTypeFilter === 'all' && styles.filterButtonActive
+                ]}
+                onPress={() => setShutterTypeFilter('all')}
+              >
+                <Text style={[
+                  styles.filterButtonText,
+                  shutterTypeFilter === 'all' && styles.filterButtonTextActive
+                ]}>
+                  Tous ({shutterStats.total})
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.filterButton,
+                  shutterTypeFilter === 'high' && styles.filterButtonActive
+                ]}
+                onPress={() => setShutterTypeFilter('high')}
+              >
+                <View style={styles.filterButtonContent}>
+                  <View style={[styles.filterButtonDot, { backgroundColor: '#10B981' }]} />
+                  <Text style={[
+                    styles.filterButtonText,
+                    shutterTypeFilter === 'high' && styles.filterButtonTextActive
+                  ]}>
+                    VH ({shutterStats.high})
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.filterButton,
+                  shutterTypeFilter === 'low' && styles.filterButtonActive
+                ]}
+                onPress={() => setShutterTypeFilter('low')}
+              >
+                <View style={styles.filterButtonContent}>
+                  <View style={[styles.filterButtonDot, { backgroundColor: '#F59E0B' }]} />
+                  <Text style={[
+                    styles.filterButtonText,
+                    shutterTypeFilter === 'low' && styles.filterButtonTextActive
+                  ]}>
+                    VB ({shutterStats.low})
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Filtre par niveau de conformité */}
+          <View style={styles.filterSection}>
+            <Text style={styles.filterSectionTitle}>📊 Niveau de conformité</Text>
+            <View style={styles.filterButtons}>
+              <TouchableOpacity
+                style={[
+                  styles.filterButton,
+                  complianceFilter === 'all' && styles.filterButtonActive
+                ]}
+                onPress={() => setComplianceFilter('all')}
+              >
+                <Text style={[
+                  styles.filterButtonText,
+                  complianceFilter === 'all' && styles.filterButtonTextActive
+                ]}>
+                  Tous ({shutterStats.total})
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.filterButton,
+                  complianceFilter === 'compliant' && styles.filterButtonActive
+                ]}
+                onPress={() => setComplianceFilter('compliant')}
+              >
+                <View style={styles.filterButtonContent}>
+                  <View style={[styles.filterButtonDot, { backgroundColor: '#10B981' }]} />
+                  <Text style={[
+                    styles.filterButtonText,
+                    complianceFilter === 'compliant' && styles.filterButtonTextActive
+                  ]}>
+                    ({shutterStats.compliant})
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.filterButton,
+                  complianceFilter === 'acceptable' && styles.filterButtonActive
+                ]}
+                onPress={() => setComplianceFilter('acceptable')}
+              >
+                <View style={styles.filterButtonContent}>
+                  <View style={[styles.filterButtonDot, { backgroundColor: '#F59E0B' }]} />
+                  <Text style={[
+                    styles.filterButtonText,
+                    complianceFilter === 'acceptable' && styles.filterButtonTextActive
+                  ]}>
+                    ({shutterStats.acceptable})
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.filterButton,
+                  complianceFilter === 'non-compliant' && styles.filterButtonActive
+                ]}
+                onPress={() => setComplianceFilter('non-compliant')}
+              >
+                <View style={styles.filterButtonContent}>
+                  <View style={[styles.filterButtonDot, { backgroundColor: '#EF4444' }]} />
+                  <Text style={[
+                    styles.filterButtonText,
+                    complianceFilter === 'non-compliant' && styles.filterButtonTextActive
+                  ]}>
+                    ({shutterStats.nonCompliant})
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       )}
 
       <View style={styles.content}>
-        {/* Indicateur de volet copié - SIMPLIFIÉ */}
-        {copiedShutter && (
-          <View style={styles.copiedIndicator}>
-            <View style={styles.copiedIndicatorContent}>
-              <Clipboard size={16} color="#10B981" />
-              <Text style={styles.copiedText}>
-                {strings.shutter} "{copiedShutter.name}" {strings.copied}
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* Barre de filtre */}
-        {filterVisible && (
-          <View style={styles.filterBar}>
-            <TouchableOpacity
-              style={[styles.filterButton, filter === 'all' && styles.filterButtonActive]}
-              onPress={() => setFilter('all')}
-            >
-              <Text style={[styles.filterButtonText, filter === 'all' && styles.filterButtonTextActive]}>
-                {strings.all} ({shutterCounts.total})
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.filterButton, filter === 'high' && styles.filterButtonActive]}
-              onPress={() => setFilter('high')}
-            >
-              <View style={[styles.filterIndicator, { backgroundColor: '#10B981' }]} />
-              <Text style={[styles.filterButtonText, filter === 'high' && styles.filterButtonTextActive]}>
-                VH ({shutterCounts.high})
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.filterButton, filter === 'low' && styles.filterButtonActive]}
-              onPress={() => setFilter('low')}
-            >
-              <View style={[styles.filterIndicator, { backgroundColor: '#F59E0B' }]} />
-              <Text style={[styles.filterButtonText, filter === 'low' && styles.filterButtonTextActive]}>
-                VB ({shutterCounts.low})
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
         {zone.shutters.length === 0 ? (
-          <View style={styles.emptyContainer}>
+          <Animated.View style={[styles.emptyContainer, { opacity: fadeAnim }]}>
+            <Wind size={64} color={theme.colors.textTertiary} />
             <Text style={styles.emptyTitle}>{strings.noShutters}</Text>
             <Text style={styles.emptySubtitle}>
               {strings.noShuttersDesc}
@@ -869,154 +852,118 @@ export default function ZoneDetailScreen() {
               onPress={handleCreateShutter}
               style={styles.createButton}
             />
-          </View>
-        ) : filteredShutters.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyTitle}>Aucun volet de ce type</Text>
-            <Text style={styles.emptySubtitle}>
-              Aucun volet {filter === 'high' ? 'haut' : 'bas'} dans cette zone
-            </Text>
-          </View>
+          </Animated.View>
         ) : (
-          <FlatList
-            ref={flatListRef}
-            data={filteredShutters}
-            renderItem={renderShutter}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.listContainer}
-            showsVerticalScrollIndicator={false}
-          />
+          <Animated.View style={[{ flex: 1 }, { opacity: fadeAnim }]}>
+            <FlatList
+              data={sortedShutters}
+              renderItem={renderShutter}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={[
+                styles.listContainer,
+                Platform.OS === 'web' && styles.listContainerWeb
+              ]}
+              showsVerticalScrollIndicator={false}
+            />
+          </Animated.View>
         )}
       </View>
-
-      {/* Modal pour éditer le nom avec auto-focus */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={nameEditModal.visible}
-        onRequestClose={() => setNameEditModal({ visible: false, shutter: null, name: '' })}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Modifier le nom du volet</Text>
-              <TouchableOpacity 
-                onPress={() => setNameEditModal({ visible: false, shutter: null, name: '' })}
-                style={styles.closeButton}
-              >
-                <Text style={styles.closeButtonText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.modalBody}>
-              <Text style={styles.inputLabel}>{strings.shutterName} *</Text>
-              <TextInput
-                ref={nameInputRef}
-                style={[
-                  styles.nameTextInput,
-                  isDark && styles.nameTextInputDark
-                ]}
-                value={nameEditModal.name}
-                onChangeText={(text) => setNameEditModal(prev => ({ ...prev, name: text }))}
-                placeholder="Ex: VH01, VB01"
-                placeholderTextColor={isDark ? "#6B7280" : "#9CA3AF"}
-                autoFocus={true}
-                selectTextOnFocus={true}
-              />
-            </View>
-
-            <View style={styles.modalFooter}>
-              <Button
-                title={strings.cancel}
-                onPress={() => setNameEditModal({ visible: false, shutter: null, name: '' })}
-                variant="secondary"
-                style={styles.modalButton}
-              />
-              <Button
-                title={strings.save}
-                onPress={saveNameChange}
-                style={styles.modalButton}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Modal pour éditer les remarques avec auto-focus */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={remarksEditModal.visible}
-        onRequestClose={() => setRemarksEditModal({ visible: false, shutter: null, remarks: '' })}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Modifier les remarques</Text>
-              <TouchableOpacity 
-                onPress={() => setRemarksEditModal({ visible: false, shutter: null, remarks: '' })}
-                style={styles.closeButton}
-              >
-                <Text style={styles.closeButtonText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.modalBody}>
-              <Text style={styles.inputLabel}>{strings.remarks}</Text>
-              <TextInput
-                ref={remarksInputRef}
-                style={[
-                  styles.remarksTextInput,
-                  isDark && styles.remarksTextInputDark
-                ]}
-                value={remarksEditModal.remarks}
-                onChangeText={(text) => setRemarksEditModal(prev => ({ ...prev, remarks: text }))}
-                placeholder="Observations, conditions de mesure..."
-                placeholderTextColor={isDark ? "#6B7280" : "#9CA3AF"}
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-                autoFocus={true}
-              />
-            </View>
-
-            <View style={styles.modalFooter}>
-              <Button
-                title={strings.cancel}
-                onPress={() => setRemarksEditModal({ visible: false, shutter: null, remarks: '' })}
-                variant="secondary"
-                style={styles.modalButton}
-              />
-              <Button
-                title={strings.save}
-                onPress={saveRemarksChange}
-                style={styles.modalButton}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+// Composants modaux
+function DeleteShutterModal({ shutter, onConfirm, onCancel, strings }: any) {
+  const { theme } = useTheme();
+  const styles = createStyles(theme);
+
+  return (
+    <View style={styles.modalContent}>
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle}>Supprimer le volet</Text>
+        <TouchableOpacity onPress={onCancel} style={styles.closeButton}>
+          <X size={20} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
+      
+      <View style={styles.modalBody}>
+        <Text style={styles.modalText}>
+          <Text>⚠️ </Text>
+          <Text style={styles.modalBold}>Cette action est irréversible !</Text>
+          <Text>{'\n\n'}</Text>
+          <Text>Êtes-vous sûr de vouloir supprimer le volet </Text>
+          <Text style={styles.modalBold}>"{shutter.name}"</Text>
+          <Text> ?</Text>
+        </Text>
+      </View>
+
+      <View style={styles.modalFooter}>
+        <Button
+          title={strings.cancel}
+          onPress={onCancel}
+          variant="secondary"
+          style={styles.modalButton}
+        />
+        <Button
+          title="Supprimer"
+          onPress={onConfirm}
+          variant="danger"
+          style={styles.modalButton}
+        />
+      </View>
+    </View>
+  );
+}
+
+function BulkDeleteShuttersModal({ count, onConfirm, onCancel, strings }: any) {
+  const { theme } = useTheme();
+  const styles = createStyles(theme);
+
+  return (
+    <View style={styles.modalContent}>
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle}>Supprimer {count} volet{count > 1 ? 's' : ''}</Text>
+        <TouchableOpacity onPress={onCancel} style={styles.closeButton}>
+          <X size={20} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
+      
+      <View style={styles.modalBody}>
+        <Text style={styles.modalText}>
+          <Text>⚠️ </Text>
+          <Text style={styles.modalBold}>Cette action est irréversible !</Text>
+          <Text>{'\n\n'}</Text>
+          <Text>Êtes-vous sûr de vouloir supprimer </Text>
+          <Text style={styles.modalBold}>{count} volet{count > 1 ? 's' : ''}</Text>
+          <Text> ?</Text>
+        </Text>
+      </View>
+
+      <View style={styles.modalFooter}>
+        <Button
+          title={strings.cancel}
+          onPress={onCancel}
+          variant="secondary"
+          style={styles.modalButton}
+        />
+        <Button
+          title={`Supprimer ${count > 1 ? 'tout' : 'le volet'}`}
+          onPress={onConfirm}
+          variant="danger"
+          style={styles.modalButton}
+        />
+      </View>
+    </View>
+  );
+}
+
+const createStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.background,
   },
   content: {
     flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: 16,
-    fontFamily: 'Inter-Regular',
-    color: '#6B7280',
   },
   errorContainer: {
     flex: 1,
@@ -1027,54 +974,99 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
     textAlign: 'center',
   },
-  // Styles pour le conteneur d'en-tête à deux niveaux
-  headerContainer: {
-    alignItems: 'flex-end',
-  },
   headerActions: {
-    flexDirection: 'row',
+    flexDirection: 'column',
+    alignItems: 'center',
     gap: 8,
-    marginBottom: 8,
   },
-  selectionRow: {
+  topButtonsRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  selectionButtonRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
   selectionButton: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: theme.colors.surfaceSecondary,
   },
   selectionButtonText: {
     fontSize: 12,
     fontFamily: 'Inter-Medium',
-    color: '#374151',
+    color: theme.colors.textSecondary,
   },
   actionButton: {
-    padding: 8,
+    padding: 6,
   },
-  // Styles pour la barre d'outils de sélection
   selectionToolbar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: theme.colors.border,
   },
   selectionCount: {
     fontSize: 16,
     fontFamily: 'Inter-Medium',
-    color: '#111827',
+    color: theme.colors.text,
   },
-  selectionActions: {
+  selectionActionsColumn: {
+    flexDirection: 'column',
+    gap: 8,
+  },
+  selectionActionsRow: {
     flexDirection: 'row',
-    gap: 16,
+    gap: 12,
+  },
+  selectAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: theme.colors.surfaceSecondary,
+  },
+  selectAllButtonActive: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: theme.colors.primary,
+  },
+  selectAllButtonInactive: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: theme.colors.surfaceSecondary,
+  },
+  selectAllButtonText: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+  },
+  selectAllButtonTextActive: {
+    color: '#FFFFFF',
+  },
+  selectAllButtonTextInactive: {
+    color: theme.colors.textTertiary,
   },
   toolbarButton: {
     flexDirection: 'row',
@@ -1083,70 +1075,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.surfaceSecondary,
   },
   toolbarButtonText: {
     fontSize: 14,
     fontFamily: 'Inter-Medium',
-  },
-  copiedIndicator: {
-    backgroundColor: '#F0FDF4',
-    borderWidth: 1,
-    borderColor: '#BBF7D0',
-    borderRadius: 8,
-    margin: 16,
-    padding: 12,
-  },
-  copiedIndicatorContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  copiedText: {
-    fontSize: 14,
-    fontFamily: 'Inter-Medium',
-    color: '#15803D',
-    flex: 1,
-  },
-  // Styles pour la barre de filtre
-  filterBar: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-    gap: 8,
-  },
-  filterButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: '#F9FAFB',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    gap: 6,
-  },
-  filterButtonActive: {
-    backgroundColor: '#009999',
-    borderColor: '#009999',
-  },
-  filterButtonText: {
-    fontSize: 14,
-    fontFamily: 'Inter-Medium',
-    color: '#6B7280',
-  },
-  filterButtonTextActive: {
-    color: '#ffffff',
-  },
-  filterIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
   },
   emptyContainer: {
     flex: 1,
@@ -1157,13 +1090,14 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 20,
     fontFamily: 'Inter-SemiBold',
-    color: '#111827',
+    color: theme.colors.text,
+    marginTop: 16,
     marginBottom: 8,
   },
   emptySubtitle: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
     textAlign: 'center',
     marginBottom: 24,
     lineHeight: 24,
@@ -1174,22 +1108,26 @@ const styles = StyleSheet.create({
   listContainer: {
     padding: 16,
   },
+  listContainerWeb: {
+    paddingBottom: 100,
+  },
   shutterCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
-  // Styles pour les cartes sélectionnées et favorites
   selectedCard: {
     borderWidth: 2,
-    borderColor: '#009999',
-    backgroundColor: '#F0FDFA',
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.primary + '10',
   },
   favoriteCard: {
     borderLeftWidth: 4,
@@ -1201,77 +1139,48 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  // Styles pour la partie gauche de l'en-tête avec checkbox
-  shutterHeaderLeft: {
+  shutterTitleSection: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
     flex: 1,
-    gap: 8,
   },
   checkbox: {
     padding: 2,
-    flexShrink: 0,
-  },
-  shutterNameContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flex: 1,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 6,
-    backgroundColor: '#F9FAFB',
-  },
-  shutterNameContainerSelection: {
-    backgroundColor: 'transparent',
   },
   shutterName: {
     fontSize: 18,
-    fontFamily: 'Inter-SemiBold',
-    color: '#111827',
+    fontFamily: 'Inter-Bold',
+    color: theme.colors.text,
     flex: 1,
   },
-  editIcon: {
-    fontSize: 12,
-  },
-  shutterHeaderRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  shutterType: {
-    fontSize: 12,
-    fontFamily: 'Inter-Medium',
-    color: '#6B7280',
-    backgroundColor: '#F3F4F6',
+  shutterTypeBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
   },
-  // Bouton favori
-  favoriteButton: {
-    padding: 4,
-    borderRadius: 6,
-    backgroundColor: '#FEF3C7',
+  shutterTypeText: {
+    fontSize: 12,
+    fontFamily: 'Inter-Bold',
+    color: '#FFFFFF',
   },
-  // NOUVEAU : Bouton paramètres pour le volet
-  settingsButton: {
-    padding: 4,
-    borderRadius: 6,
-    backgroundColor: '#F0FDFA',
-  },
-  copyButton: {
-    padding: 4,
-    borderRadius: 6,
-    backgroundColor: '#F0FDFA',
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 4,
   },
   
-  // STYLES pour l'édition directe avec sauvegarde automatique
+  // Styles pour l'édition des débits (identiques à la page de détail)
   flowEditingContainer: {
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.surfaceSecondary,
     borderRadius: 8,
     padding: 12,
     marginBottom: 12,
+  },
+  flowSectionTitle: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+    color: theme.colors.text,
+    marginBottom: 8,
   },
   flowEditingRow: {
     flexDirection: 'row',
@@ -1280,174 +1189,201 @@ const styles = StyleSheet.create({
   flowEditingField: {
     flex: 1,
   },
-  // Conteneur pour les labels avec hauteur fixe
   flowLabelContainer: {
-    height: 44, // Hauteur fixe pour aligner tous les champs
+    height: 44,
     justifyContent: 'flex-start',
     marginBottom: 4,
   },
   flowEditingLabel: {
     fontSize: 10,
     fontFamily: 'Inter-Medium',
-    color: '#374151',
+    color: theme.colors.textSecondary,
     lineHeight: 12,
   },
   flowEditingUnit: {
     fontSize: 9,
     fontFamily: 'Inter-Regular',
-    color: '#9CA3AF',
+    color: theme.colors.textTertiary,
     marginTop: 2,
   },
   flowEditingInput: {
     borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderColor: theme.mode === 'dark' 
+      ? theme.colors.primary + '80'
+      : theme.colors.border,
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 8,
     fontSize: 14,
     fontFamily: 'Inter-Regular',
-    backgroundColor: '#ffffff',
-    color: '#111827',
+    backgroundColor: theme.mode === 'dark' 
+      ? theme.colors.primary + '15'
+      : theme.colors.inputBackground,
+    color: theme.colors.text,
     textAlign: 'center',
-    height: 40, // Hauteur fixe pour tous les champs
-  },
-  // NOUVEAU : Style pour l'input en mode sombre
-  flowEditingInputDark: {
-    backgroundColor: '#374151',
-    borderColor: '#4B5563',
-    color: '#F9FAFB', // Texte blanc en mode sombre
+    height: 40,
   },
   deviationDisplay: {
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: theme.mode === 'dark' 
+      ? theme.colors.border + '80'
+      : theme.colors.border,
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 8,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.surfaceSecondary,
     alignItems: 'center',
     justifyContent: 'center',
-    height: 40, // Même hauteur que les inputs
+    height: 40,
   },
   deviationValue: {
     fontSize: 14,
     fontFamily: 'Inter-Bold',
   },
-  
-  complianceContainer: {
-    alignItems: 'flex-start',
-    marginBottom: 8,
-  },
-  
-  // Bouton remarques fin sur toute la largeur
-  remarksButton: {
+  complianceSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
-  remarksButtonText: {
+  invalidReferenceText: {
     fontSize: 12,
-    fontFamily: 'Inter-Regular',
-    color: '#6B7280',
-    flex: 1,
+    fontFamily: 'Inter-Medium',
+    color: theme.colors.warning,
     fontStyle: 'italic',
   },
-  
-  // Styles pour le modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
+  remarksSection: {
+    backgroundColor: theme.colors.primary + '20',
+    borderRadius: 6,
+    padding: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: theme.colors.primary,
+  },
+  remarksText: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    color: theme.colors.primary,
+    lineHeight: 16,
   },
   modalContent: {
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.surface,
     borderRadius: 16,
+    padding: 20,
     width: '100%',
     maxWidth: 400,
+    maxHeight: '70%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    marginBottom: 16,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontFamily: 'Inter-SemiBold',
-    color: '#111827',
+    color: theme.colors.text,
+    flex: 1,
   },
   closeButton: {
     padding: 4,
   },
-  closeButtonText: {
-    fontSize: 18,
-    color: '#6B7280',
-  },
   modalBody: {
-    padding: 20,
+    marginBottom: 20,
+  },
+  modalText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: theme.colors.textSecondary,
+    lineHeight: 20,
+  },
+  modalBold: {
+    fontFamily: 'Inter-SemiBold',
+    color: theme.colors.text,
   },
   modalFooter: {
     flexDirection: 'row',
-    padding: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
     gap: 12,
   },
   modalButton: {
     flex: 1,
   },
   
-  // Styles pour les inputs avec auto-focus
-  inputLabel: {
-    fontSize: 14,
+  // Styles pour les filtres
+  filterBar: {
+    backgroundColor: theme.colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  filterHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  filterTitle: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: theme.colors.text,
+  },
+  clearFiltersButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: theme.colors.error + '20',
+  },
+  clearFiltersText: {
+    fontSize: 12,
     fontFamily: 'Inter-Medium',
-    color: '#374151',
-    marginBottom: 6,
+    color: theme.colors.error,
   },
-  nameTextInput: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
+  filterSection: {
+    marginBottom: 16,
+  },
+  filterSectionTitle: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+    color: theme.colors.text,
+    marginBottom: 8,
+  },
+  filterButtons: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  filterButton: {
+    paddingVertical: 8,
     paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 16,
-    fontFamily: 'Inter-Regular',
-    backgroundColor: '#ffffff',
-    color: '#111827',
-    minHeight: 48,
-  },
-  // NOUVEAU : Style pour l'input nom en mode sombre
-  nameTextInputDark: {
-    backgroundColor: '#374151',
-    borderColor: '#4B5563',
-    color: '#F9FAFB', // Texte blanc en mode sombre
-  },
-  remarksTextInput: {
+    borderRadius: 20,
+    backgroundColor: theme.colors.surfaceSecondary,
     borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 16,
-    fontFamily: 'Inter-Regular',
-    backgroundColor: '#ffffff',
-    color: '#111827',
-    minHeight: 100,
-    maxHeight: 150,
+    borderColor: theme.colors.border,
   },
-  // NOUVEAU : Style pour l'input remarques en mode sombre
-  remarksTextInputDark: {
-    backgroundColor: '#374151',
-    borderColor: '#4B5563',
-    color: '#F9FAFB', // Texte blanc en mode sombre
+  filterButtonActive: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  filterButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  filterButtonText: {
+    fontSize: 12,
+    fontFamily: 'Inter-Medium',
+    color: theme.colors.textSecondary,
+  },
+  filterButtonTextActive: {
+    color: '#FFFFFF',
+  },
+  filterButtonDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
 });

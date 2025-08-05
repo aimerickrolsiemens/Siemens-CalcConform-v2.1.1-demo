@@ -1,50 +1,52 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, TextInput, Modal } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, TextInput, Platform, Animated } from 'react-native';
 import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
-import { Plus, Wind, Settings, Star, Trash2, SquareCheck as CheckSquare, Square, X } from 'lucide-react-native';
+import { Plus, Settings, Wind, Star, Trash2, SquareCheck as CheckSquare, Square, X } from 'lucide-react-native';
 import { Header } from '@/components/Header';
 import { Button } from '@/components/Button';
+import { Input } from '@/components/Input';
 import { Project, Building, FunctionalZone } from '@/types';
-import { storage } from '@/utils/storage';
+import { useStorage } from '@/contexts/StorageContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useCallback } from 'react';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useAndroidBackButton } from '@/utils/BackHandler';
+import { LoadingScreen } from '@/components/LoadingScreen';
+import { useModal } from '@/contexts/ModalContext';
 
 export default function BuildingDetailScreen() {
   const { strings } = useLanguage();
+  const { theme } = useTheme();
+  const { showModal, hideModal } = useModal();
+  const { 
+    projects, 
+    favoriteZones, 
+    setFavoriteZones, 
+    deleteFunctionalZone, 
+    updateFunctionalZone 
+  } = useStorage();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [building, setBuilding] = useState<Building | null>(null);
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Convert favoriteZones array to Set for .has() method
+  const favoriteZonesSet = new Set(favoriteZones);
 
   // États pour le mode sélection
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedZones, setSelectedZones] = useState<Set<string>>(new Set());
-  const [favoriteZones, setFavoriteZones] = useState<Set<string>>(new Set());
 
-  // Modal pour éditer le nom de la zone
-  const [nameEditModal, setNameEditModal] = useState<{
-    visible: boolean;
-    zone: FunctionalZone | null;
-    name: string;
-  }>({ visible: false, zone: null, name: '' });
 
-  // Référence pour l'auto-focus
-  const nameInputRef = useRef<TextInput>(null);
+  // Configure Android back button to go back to the project screen
+  useAndroidBackButton(() => {
+    handleBack();
+    return true;
+  });
 
-  // Auto-focus sur l'input du nom quand le modal s'ouvre
-  useEffect(() => {
-    if (nameEditModal.visible && nameInputRef.current) {
-      const timer = setTimeout(() => {
-        nameInputRef.current?.focus();
-      }, 300);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [nameEditModal.visible]);
 
   const loadBuilding = useCallback(async () => {
     try {
-      const projects = await storage.getProjects();
       for (const proj of projects) {
         const foundBuilding = proj.buildings.find(b => b.id === id);
         if (foundBuilding) {
@@ -58,30 +60,27 @@ export default function BuildingDetailScreen() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
-
-  const loadFavorites = useCallback(async () => {
-    try {
-      const favorites = await storage.getFavoriteZones();
-      setFavoriteZones(new Set(favorites));
-    } catch (error) {
-      console.error('Erreur lors du chargement des favoris:', error);
-    }
-  }, []);
+  }, [id, projects]);
 
   // NOUVEAU : Utiliser useFocusEffect pour recharger les données quand on revient sur la page
   useFocusEffect(
     useCallback(() => {
       console.log('Building screen focused, reloading data...');
       loadBuilding();
-      loadFavorites();
-    }, [loadBuilding, loadFavorites])
+      
+      // Animation de fondu à l'entrée
+      fadeAnim.setValue(0);
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }, [loadBuilding])
   );
 
   useEffect(() => {
     loadBuilding();
-    loadFavorites();
-  }, [loadBuilding, loadFavorites]);
+  }, [loadBuilding]);
 
   const handleBack = () => {
     try {
@@ -133,28 +132,13 @@ export default function BuildingDetailScreen() {
 
   // Fonction pour ouvrir le modal d'édition du nom
   const openNameEditModal = (zone: FunctionalZone) => {
-    setNameEditModal({
-      visible: true,
-      zone,
-      name: zone.name
-    });
+    showModal(<EditZoneNameModal 
+      zone={zone}
+      onCancel={() => hideModal()}
+      strings={strings}
+    />);
   };
 
-  // Fonction pour sauvegarder le changement de nom
-  const saveNameChange = async () => {
-    if (!nameEditModal.zone || !nameEditModal.name.trim()) return;
-
-    try {
-      await storage.updateFunctionalZone(nameEditModal.zone.id, {
-        name: nameEditModal.name.trim(),
-      });
-      
-      setNameEditModal({ visible: false, zone: null, name: '' });
-      loadBuilding();
-    } catch (error) {
-      Alert.alert(strings.error, 'Impossible de modifier le nom de la zone');
-    }
-  };
 
   // Fonctions pour le mode sélection
   const handleSelectionMode = () => {
@@ -175,25 +159,31 @@ export default function BuildingDetailScreen() {
   const handleBulkDelete = () => {
     if (selectedZones.size === 0) return;
 
-    Alert.alert(
-      strings.delete + ' ' + strings.zones.toLowerCase(),
-      `Êtes-vous sûr de vouloir supprimer ${selectedZones.size} zone${selectedZones.size > 1 ? 's' : ''} ?`,
-      [
-        { text: strings.cancel, style: 'cancel' },
-        {
-          text: strings.delete,
-          style: 'destructive',
-          onPress: async () => {
-            for (const zoneId of selectedZones) {
-              await storage.deleteFunctionalZone(zoneId);
-            }
-            setSelectedZones(new Set());
-            setSelectionMode(false);
-            loadBuilding();
-          }
+    showModal(<BulkDeleteZonesModal 
+      count={selectedZones.size}
+      onConfirm={() => confirmBulkDeleteZones()}
+      onCancel={() => hideModal()}
+      strings={strings}
+    />);
+  };
+
+  const confirmBulkDeleteZones = async () => {
+    try {
+      console.log('🗑️ Suppression en lot de', selectedZones.size, 'zones');
+      for (const zoneId of selectedZones) {
+        const success = await deleteFunctionalZone(zoneId);
+        if (!success) {
+          console.error('Erreur lors de la suppression de la zone:', zoneId);
         }
-      ]
-    );
+      }
+      setSelectedZones(new Set());
+      setSelectionMode(false);
+      await loadBuilding();
+      hideModal();
+    } catch (error) {
+      console.error('Erreur lors de la suppression en lot:', error);
+      hideModal();
+    }
   };
 
   const handleBulkFavorite = async () => {
@@ -208,10 +198,20 @@ export default function BuildingDetailScreen() {
       }
     }
     
-    setFavoriteZones(newFavorites);
-    await storage.setFavoriteZones(Array.from(newFavorites));
+    setFavoriteZones(Array.from(newFavorites));
     setSelectedZones(new Set());
     setSelectionMode(false);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedZones.size === sortedZones.length) {
+      // Si tout est sélectionné, tout désélectionner
+      setSelectedZones(new Set());
+    } else {
+      // Sinon, tout sélectionner
+      const allZoneIds = new Set(sortedZones.map(z => z.id));
+      setSelectedZones(allZoneIds);
+    }
   };
 
   const handleToggleFavorite = async (zoneId: string) => {
@@ -222,26 +222,34 @@ export default function BuildingDetailScreen() {
       newFavorites.add(zoneId);
     }
     
-    setFavoriteZones(newFavorites);
-    await storage.setFavoriteZones(Array.from(newFavorites));
+    setFavoriteZones(Array.from(newFavorites));
   };
 
   const handleDeleteZone = async (zone: FunctionalZone) => {
-    Alert.alert(
-      strings.deleteZone,
-      `Êtes-vous sûr de vouloir supprimer la zone "${zone.name}" ?`,
-      [
-        { text: strings.cancel, style: 'cancel' },
-        {
-          text: strings.delete,
-          style: 'destructive',
-          onPress: async () => {
-            await storage.deleteFunctionalZone(zone.id);
-            loadBuilding();
-          }
-        }
-      ]
-    );
+    showModal(<DeleteZoneModal 
+      zone={zone}
+      onConfirm={() => confirmDeleteZone(zone)}
+      onCancel={() => hideModal()}
+      strings={strings}
+    />);
+  };
+
+  const confirmDeleteZone = async (zone: FunctionalZone) => {
+    try {
+      console.log('🗑️ Confirmation suppression zone:', zone.id);
+      const success = await deleteFunctionalZone(zone.id);
+      if (success) {
+        console.log('✅ Zone supprimée avec succès');
+        hideModal();
+      } else {
+        console.error('❌ Erreur: Zone non trouvée pour la suppression');
+        hideModal();
+        hideModal();
+      }
+    } catch (error) {
+      console.error('Erreur lors de la suppression:', error);
+      hideModal();
+    }
   };
 
   // Fonction pour obtenir le détail des volets par type
@@ -253,10 +261,16 @@ export default function BuildingDetailScreen() {
     return { highShutters, lowShutters, total };
   };
 
+  const getFilteredZones = () => {
+    if (!building) return [];
+    
+    return building.functionalZones || [];
+  };
+
   // Trier les zones : favoris en premier
   const sortedZones = building ? [...building.functionalZones].sort((a, b) => {
-    const aIsFavorite = favoriteZones.has(a.id);
-    const bIsFavorite = favoriteZones.has(b.id);
+    const aIsFavorite = favoriteZonesSet.has(a.id);
+    const bIsFavorite = favoriteZonesSet.has(b.id);
     
     if (aIsFavorite && !bIsFavorite) return -1;
     if (!aIsFavorite && bIsFavorite) return 1;
@@ -266,7 +280,7 @@ export default function BuildingDetailScreen() {
   const renderZone = ({ item }: { item: FunctionalZone }) => {
     const shutterDetails = getShutterDetails(item);
     const isSelected = selectedZones.has(item.id);
-    const isFavorite = favoriteZones.has(item.id);
+    const isFavorite = favoriteZonesSet.has(item.id);
 
     return (
       <TouchableOpacity
@@ -292,13 +306,13 @@ export default function BuildingDetailScreen() {
                 onPress={() => handleZoneSelection(item.id)}
               >
                 {isSelected ? (
-                  <CheckSquare size={16} color="#009999" />
+                  <CheckSquare size={16} color={theme.colors.primary} />
                 ) : (
-                  <Square size={16} color="#9CA3AF" />
+                  <Square size={16} color={theme.colors.textTertiary} />
                 )}
               </TouchableOpacity>
             )}
-            <Wind size={16} color="#009999" />
+            <Wind size={16} color={theme.colors.primary} />
             {/* Nom de la zone cliquable pour édition directe */}
             <TouchableOpacity 
               style={[styles.zoneNameContainer, selectionMode && styles.zoneNameContainerSelection]}
@@ -356,7 +370,7 @@ export default function BuildingDetailScreen() {
               >
                 <Star 
                   size={12} 
-                  color={isFavorite ? "#F59E0B" : "#9CA3AF"} 
+                  color={isFavorite ? "#F59E0B" : theme.colors.textTertiary} 
                   fill={isFavorite ? "#F59E0B" : "none"}
                 />
               </TouchableOpacity>
@@ -364,32 +378,25 @@ export default function BuildingDetailScreen() {
                 style={styles.actionButtonCompact}
                 onPress={() => handleEditZone(item)}
               >
-                <Settings size={12} color="#009999" />
+                <Settings size={12} color={theme.colors.primary} />
               </TouchableOpacity>
               <TouchableOpacity 
                 style={styles.actionButtonCompact}
                 onPress={() => handleDeleteZone(item)}
               >
-                <Trash2 size={12} color="#EF4444" />
+                <Trash2 size={12} color={theme.colors.error} />
               </TouchableOpacity>
             </View>
           )}
         </View>
-
-        {/* SUPPRIMÉ : La barre de progression de conformité */}
-      </TouchableOpacity>
+        </TouchableOpacity>
     );
   };
 
+  const styles = createStyles(theme);
+
   if (loading) {
-    return (
-      <View style={styles.container}>
-        <Header title={strings.loading} onBack={handleBack} />
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>{strings.loadingData}</Text>
-        </View>
-      </View>
-    );
+    return <LoadingScreen title={strings.loading} message={strings.loadingData} />;
   }
 
   if (!building || !project) {
@@ -417,10 +424,10 @@ export default function BuildingDetailScreen() {
             {/* Première ligne avec les boutons principaux */}
             <View style={styles.headerActions}>
               <TouchableOpacity onPress={handleEditBuilding} style={styles.actionButton}>
-                <Settings size={20} color="#009999" />
+                <Settings size={20} color={theme.colors.primary} />
               </TouchableOpacity>
               <TouchableOpacity onPress={handleCreateZone} style={styles.actionButton}>
-                <Plus size={24} color="#009999" />
+                <Plus size={24} color={theme.colors.primary} />
               </TouchableOpacity>
             </View>
             
@@ -442,35 +449,61 @@ export default function BuildingDetailScreen() {
           <Text style={styles.selectionCount}>
             {selectedZones.size} {strings.selected}{selectedZones.size > 1 ? 's' : ''}
           </Text>
-          <View style={styles.selectionActions}>
+          <View style={styles.selectionActionsColumn}>
             <TouchableOpacity 
-              style={styles.toolbarButton}
-              onPress={handleBulkFavorite}
-              disabled={selectedZones.size === 0}
+              style={styles.selectAllButton}
+              onPress={handleSelectAll}
+              style={[
+                styles.selectAllButton,
+                selectedZones.size === sortedZones.length 
+                  ? styles.selectAllButtonActive 
+                  : styles.selectAllButtonInactive
+              ]}
             >
-              <Star size={20} color={selectedZones.size > 0 ? "#F59E0B" : "#9CA3AF"} />
-              <Text style={[styles.toolbarButtonText, { color: selectedZones.size > 0 ? "#F59E0B" : "#9CA3AF" }]}>
-                {strings.favorites}
+              {selectedZones.size === sortedZones.length ? (
+                <CheckSquare size={20} color="#FFFFFF" />
+              ) : (
+                <Square size={20} color={theme.colors.textTertiary} />
+              )}
+              <Text style={[
+                styles.selectAllButtonText,
+                selectedZones.size === sortedZones.length 
+                  ? styles.selectAllButtonTextActive 
+                  : styles.selectAllButtonTextInactive
+              ]}>
+                {selectedZones.size === sortedZones.length ? 'Tout désélectionner' : 'Tout sélectionner'}
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.toolbarButton}
-              onPress={handleBulkDelete}
-              disabled={selectedZones.size === 0}
-            >
-              <Trash2 size={20} color={selectedZones.size > 0 ? "#EF4444" : "#9CA3AF"} />
-              <Text style={[styles.toolbarButtonText, { color: selectedZones.size > 0 ? "#EF4444" : "#9CA3AF" }]}>
-                {strings.delete}
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.selectionActionsRow}>
+              <TouchableOpacity 
+                style={styles.toolbarButton}
+                onPress={handleBulkFavorite}
+                disabled={selectedZones.size === 0}
+              >
+                <Star size={20} color={selectedZones.size > 0 ? "#F59E0B" : theme.colors.textTertiary} />
+                <Text style={[styles.toolbarButtonText, { color: selectedZones.size > 0 ? "#F59E0B" : theme.colors.textTertiary }]}>
+                  {strings.favorites}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.toolbarButton}
+                onPress={handleBulkDelete}
+                disabled={selectedZones.size === 0}
+              >
+                <Trash2 size={20} color={selectedZones.size > 0 ? theme.colors.error : theme.colors.textTertiary} />
+                <Text style={[styles.toolbarButtonText, { color: selectedZones.size > 0 ? theme.colors.error : theme.colors.textTertiary }]}>
+                  {strings.delete}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       )}
 
       <View style={styles.content}>
         {building.functionalZones.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Wind size={48} color="#D1D5DB" />
+          <Animated.View style={[styles.emptyContainer, { opacity: fadeAnim }]}>
+            <Wind size={48} color={theme.colors.textTertiary} />
             <Text style={styles.emptyTitle}>{strings.noZones}</Text>
             <Text style={styles.emptySubtitle}>
               {strings.noZonesDesc}
@@ -480,75 +513,28 @@ export default function BuildingDetailScreen() {
               onPress={handleCreateZone}
               style={styles.createButton}
             />
-          </View>
+          </Animated.View>
         ) : (
-          <FlatList
-            data={sortedZones}
-            renderItem={renderZone}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.listContainer}
-            showsVerticalScrollIndicator={false}
-          />
+          <Animated.View style={[{ flex: 1 }, { opacity: fadeAnim }]}>
+            <FlatList
+              data={sortedZones}
+              renderItem={renderZone}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.listContainer}
+              showsVerticalScrollIndicator={false}
+            />
+          </Animated.View>
         )}
       </View>
 
-      {/* Modal pour éditer le nom de la zone avec auto-focus */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={nameEditModal.visible}
-        onRequestClose={() => setNameEditModal({ visible: false, zone: null, name: '' })}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.nameEditModalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Modifier le nom de la zone</Text>
-              <TouchableOpacity 
-                onPress={() => setNameEditModal({ visible: false, zone: null, name: '' })}
-                style={styles.closeButton}
-              >
-                <X size={20} color="#6B7280" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.modalBody}>
-              <Text style={styles.inputLabel}>{strings.zoneName} *</Text>
-              <TextInput
-                ref={nameInputRef}
-                style={styles.nameTextInput}
-                value={nameEditModal.name}
-                onChangeText={(text) => setNameEditModal(prev => ({ ...prev, name: text }))}
-                placeholder="Ex: ZF01, Zone Hall"
-                placeholderTextColor="#9CA3AF"
-                autoFocus={true}
-                selectTextOnFocus={true}
-              />
-            </View>
-
-            <View style={styles.modalFooter}>
-              <Button
-                title={strings.cancel}
-                onPress={() => setNameEditModal({ visible: false, zone: null, name: '' })}
-                variant="secondary"
-                style={styles.modalButton}
-              />
-              <Button
-                title={strings.save}
-                onPress={saveNameChange}
-                style={styles.modalButton}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.background,
   },
   content: {
     flex: 1,
@@ -561,7 +547,7 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
   },
   errorContainer: {
     flex: 1,
@@ -572,7 +558,7 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
     textAlign: 'center',
   },
   // Styles pour le conteneur d'en-tête à deux niveaux
@@ -591,12 +577,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: theme.colors.surfaceSecondary,
   },
   selectionButtonText: {
     fontSize: 12,
     fontFamily: 'Inter-Medium',
-    color: '#374151',
+    color: theme.colors.textSecondary,
   },
   actionButton: {
     padding: 8,
@@ -608,18 +594,52 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: theme.colors.border,
   },
   selectionCount: {
     fontSize: 16,
     fontFamily: 'Inter-Medium',
-    color: '#111827',
+    color: theme.colors.text,
   },
   selectionActions: {
+    flexDirection: 'column',
+    gap: 8,
+  },
+  selectionActionsColumn: {
+    flexDirection: 'column',
+    gap: 8,
+  },
+  selectionActionsRow: {
     flexDirection: 'row',
-    gap: 16,
+    gap: 12,
+  },
+  selectAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: theme.colors.surfaceSecondary,
+  },
+  selectAllButtonActive: {
+    backgroundColor: theme.colors.primary,
+  },
+  selectAllButtonInactive: {
+    backgroundColor: theme.colors.surfaceSecondary,
+  },
+  selectAllButtonText: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+  },
+  selectAllButtonTextActive: {
+    color: '#FFFFFF',
+  },
+  selectAllButtonTextInactive: {
+    color: theme.colors.textTertiary,
   },
   toolbarButton: {
     flexDirection: 'row',
@@ -628,7 +648,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.surfaceSecondary,
   },
   toolbarButtonText: {
     fontSize: 14,
@@ -643,14 +663,14 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 20,
     fontFamily: 'Inter-SemiBold',
-    color: '#111827',
+    color: theme.colors.text,
     marginTop: 16,
     marginBottom: 8,
   },
   emptySubtitle: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
     textAlign: 'center',
     marginBottom: 24,
     lineHeight: 24,
@@ -664,7 +684,7 @@ const styles = StyleSheet.create({
 
   // STYLES COMPACTS ET RAFFINÉS pour les cartes de zone
   zoneCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.surface,
     borderRadius: 8,
     padding: 12,
     marginBottom: 8,
@@ -674,13 +694,13 @@ const styles = StyleSheet.create({
     shadowRadius: 1,
     elevation: 1,
     borderWidth: 1,
-    borderColor: '#F3F4F6',
+    borderColor: theme.colors.border,
   },
   // Styles pour les cartes sélectionnées et favorites
   selectedCard: {
     borderWidth: 1,
-    borderColor: '#009999',
-    backgroundColor: '#F0FDFA',
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.primary + '20',
   },
   favoriteCard: {
     borderLeftWidth: 3,
@@ -715,7 +735,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     paddingHorizontal: 6,
     borderRadius: 4,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.surfaceSecondary,
     minWidth: 0,
   },
   zoneNameContainerSelection: {
@@ -724,7 +744,7 @@ const styles = StyleSheet.create({
   zoneName: {
     fontSize: 15,
     fontFamily: 'Inter-SemiBold',
-    color: '#111827',
+    color: theme.colors.text,
     flex: 1,
     minWidth: 0,
   },
@@ -736,7 +756,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     paddingHorizontal: 8,
     borderRadius: 4,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.surfaceSecondary,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
@@ -745,7 +765,7 @@ const styles = StyleSheet.create({
   shutterCountTotal: {
     fontSize: 11,
     fontFamily: 'Inter-Medium',
-    color: '#009999',
+    color: theme.colors.primary,
     textAlign: 'center',
   },
 
@@ -756,7 +776,7 @@ const styles = StyleSheet.create({
   zoneDescription: {
     fontSize: 12,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
     paddingLeft: 22, // Aligné avec le nom (icône + gap)
   },
 
@@ -785,7 +805,7 @@ const styles = StyleSheet.create({
   shutterTypeText: {
     fontSize: 11,
     fontFamily: 'Inter-Medium',
-    color: '#374151',
+    color: theme.colors.textSecondary,
   },
 
   // Actions - TRÈS COMPACTES (maintenant directement à droite)
@@ -796,46 +816,46 @@ const styles = StyleSheet.create({
   actionButtonCompact: {
     padding: 3,
     borderRadius: 3,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.surfaceSecondary,
   },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  nameEditModalContent: {
-    backgroundColor: '#ffffff',
+  modalContent: {
+    backgroundColor: theme.colors.surface,
     borderRadius: 16,
+    padding: 20,
     width: '100%',
     maxWidth: 400,
+    maxHeight: '70%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    marginBottom: 16,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontFamily: 'Inter-SemiBold',
-    color: '#111827',
+    color: theme.colors.text,
+    flex: 1,
   },
   closeButton: {
     padding: 4,
   },
   modalBody: {
-    padding: 20,
+    marginBottom: 20,
+  },
+  modalText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: theme.colors.textSecondary,
+    lineHeight: 20,
+  },
+  modalBold: {
+    fontFamily: 'Inter-SemiBold',
+    color: theme.colors.text,
   },
   modalFooter: {
     flexDirection: 'row',
-    padding: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
     gap: 12,
   },
   modalButton: {
@@ -844,18 +864,200 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 14,
     fontFamily: 'Inter-Medium',
-    color: '#374151',
+    color: theme.colors.textSecondary,
     marginBottom: 6,
   },
   nameTextInput: {
     borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderColor: theme.colors.border,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 12,
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.inputBackground,
+    color: theme.colors.text,
     minHeight: 48,
   },
+  modalButtonText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Medium',
+    textAlign: 'center',
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Platform.OS === 'web' ? 0 : 20,
+    ...(Platform.OS === 'web' && {
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 9999,
+      paddingTop: 40,
+      paddingBottom: 100,
+      paddingHorizontal: 20,
+    }),
+  },
+  nameEditModalContent: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 400,
+  },
 });
+
+// Composant modal pour la suppression d'une zone
+function DeleteZoneModal({ zone, onConfirm, onCancel, strings }: any) {
+  const { theme } = useTheme();
+  const styles = createStyles(theme);
+
+  return (
+    <View style={styles.modalContent}>
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle}>Supprimer la zone</Text>
+        <TouchableOpacity onPress={onCancel} style={styles.closeButton}>
+          <X size={20} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
+      
+      <View style={styles.modalBody}>
+        <Text style={styles.modalText}>
+          <Text>⚠️ </Text>
+          <Text style={styles.modalBold}>Cette action est irréversible !</Text>
+          <Text>{'\n\n'}</Text>
+          <Text>Êtes-vous sûr de vouloir supprimer la zone </Text>
+          <Text style={styles.modalBold}>"{zone.name}"</Text>
+          <Text> ?</Text>
+          <Text>{'\n\n'}</Text>
+          <Text>Tous les volets associés seront également supprimés.</Text>
+        </Text>
+      </View>
+
+      <View style={styles.modalFooter}>
+        <Button
+          title={strings.cancel}
+          onPress={onCancel}
+          variant="secondary"
+          style={styles.modalButton}
+        />
+        <Button
+          title="Supprimer"
+          onPress={onConfirm}
+          variant="danger"
+          style={styles.modalButton}
+        />
+      </View>
+    </View>
+  );
+}
+
+// Composant modal pour la suppression en lot de zones
+function BulkDeleteZonesModal({ count, onConfirm, onCancel, strings }: any) {
+  const { theme } = useTheme();
+  const styles = createStyles(theme);
+
+  return (
+    <View style={styles.modalContent}>
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle}>Supprimer {count} zone{count > 1 ? 's' : ''}</Text>
+        <TouchableOpacity onPress={onCancel} style={styles.closeButton}>
+          <X size={20} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
+      
+      <View style={styles.modalBody}>
+        <Text style={styles.modalText}>
+          <Text>⚠️ </Text>
+          <Text style={styles.modalBold}>Cette action est irréversible !</Text>
+          <Text>{'\n\n'}</Text>
+          <Text>Êtes-vous sûr de vouloir supprimer </Text>
+          <Text style={styles.modalBold}>{count} zone{count > 1 ? 's' : ''}</Text>
+          <Text> ?</Text>
+          <Text>{'\n\n'}</Text>
+          <Text>Tous les volets associés seront également supprimés.</Text>
+        </Text>
+      </View>
+
+      <View style={styles.modalFooter}>
+        <Button
+          title={strings.cancel}
+          onPress={onCancel}
+          variant="secondary"
+          style={styles.modalButton}
+        />
+        <Button
+          title={`Supprimer ${count > 1 ? 'tout' : 'la zone'}`}
+          onPress={onConfirm}
+          variant="danger"
+          style={styles.modalButton}
+        />
+      </View>
+    </View>
+  );
+}
+
+// Composant modal séparé pour utiliser le portail global
+function EditZoneNameModal({ zone, onSave, onCancel, strings }: any) {
+  const { theme } = useTheme();
+  const { hideModal } = useModal();
+  const { updateFunctionalZone } = useStorage();
+  const [name, setName] = useState(zone.name);
+  const styles = createStyles(theme);
+
+  const handleSave = async () => {
+    if (!zone || !name.trim()) return;
+
+    try {
+      const updatedZone = await updateFunctionalZone(zone.id, {
+        name: name.trim(),
+      });
+      
+      if (updatedZone) {
+        hideModal();
+      } else {
+        console.error('Erreur lors de la modification du nom de la zone');
+      }
+    } catch (error) {
+      console.error('Erreur lors de la modification du nom de la zone:', error);
+    }
+  };
+
+  return (
+    <View style={styles.modalContent}>
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle}>Modifier le nom de la zone</Text>
+        <TouchableOpacity onPress={onCancel} style={styles.closeButton}>
+          <X size={20} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.modalBody}>
+        <Input
+          label={`${strings.zoneName} *`}
+          value={name}
+          onChangeText={setName}
+          placeholder="Ex: ZF01, Zone Hall"
+        />
+      </View>
+
+      <View style={styles.modalFooter}>
+        <Button
+          title={strings.cancel}
+          onPress={onCancel}
+          variant="secondary"
+          style={styles.modalButton}
+        />
+        <Button
+          title={strings.save}
+          onPress={handleSave}
+          style={styles.modalButton}
+        />
+      </View>
+    </View>
+  );
+}

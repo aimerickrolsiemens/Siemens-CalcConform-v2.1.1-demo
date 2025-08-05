@@ -4,20 +4,20 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Header } from '@/components/Header';
 import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
-import { storage } from '@/utils/storage';
+import { useStorage } from '@/contexts/StorageContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useTheme } from '@/contexts/ThemeContext';
 
 export default function CreateBuildingScreen() {
   const { strings } = useLanguage();
+  const { createBuilding } = useStorage();
   const { projectId } = useLocalSearchParams<{ projectId: string }>();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ name?: string }>({});
 
-  // NOUVEAU : Détecter le thème système
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const { theme } = useTheme();
 
   const handleBack = () => {
     if (projectId) {
@@ -44,7 +44,7 @@ export default function CreateBuildingScreen() {
 
     setLoading(true);
     try {
-      const building = await storage.createBuilding(projectId, {
+      const building = await createBuilding(projectId, {
         name: name.trim(),
         description: description.trim() || undefined,
       });
@@ -61,6 +61,8 @@ export default function CreateBuildingScreen() {
       setLoading(false);
     }
   };
+
+  const styles = createStyles(theme);
 
   return (
     <KeyboardAvoidingView 
@@ -87,7 +89,7 @@ export default function CreateBuildingScreen() {
         />
 
         <Input
-          label={strings.description + " (" + strings.optional + ")"}
+          label={`${strings.description} (${strings.optional})`}
           value={description}
           onChangeText={setDescription}
           placeholder="Ex: Bâtiment principal, 5 étages"
@@ -107,10 +109,10 @@ export default function CreateBuildingScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.background,
   },
   content: {
     flex: 1,

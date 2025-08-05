@@ -1,18 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform, useColorScheme } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Header } from '@/components/Header';
 import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
 import { ComplianceIndicator } from '@/components/ComplianceIndicator';
 import { Project, Building, FunctionalZone, Shutter, ShutterType } from '@/types';
-import { storage } from '@/utils/storage';
+import { useStorage } from '@/contexts/StorageContext';
 import { calculateCompliance, formatDeviation } from '@/utils/compliance';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useAndroidBackButton } from '@/utils/BackHandler';
 
 export default function EditShutterScreen() {
   const { strings, currentLanguage } = useLanguage();
-  const { id, from } = useLocalSearchParams<{ id: string; from?: string }>(); // NOUVEAU : Paramètre 'from'
+  const { theme } = useTheme();
+  const { projects, updateShutter } = useStorage();
+  const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
   const [shutter, setShutter] = useState<Shutter | null>(null);
   const [zone, setZone] = useState<FunctionalZone | null>(null);
   const [building, setBuilding] = useState<Building | null>(null);
@@ -26,17 +30,18 @@ export default function EditShutterScreen() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [errors, setErrors] = useState<{ name?: string; referenceFlow?: string; measuredFlow?: string }>({});
 
-  // NOUVEAU : Détecter le thème système
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  // Configure Android back button to go back to the shutter screen
+  useAndroidBackButton(() => {
+    handleBack();
+    return true;
+  });
 
-  // NOUVEAU : Fonction pour obtenir le préfixe selon la langue et le type
   const getShutterPrefix = (shutterType: ShutterType, language: string) => {
     const prefixes = {
-      fr: { high: 'VH', low: 'VB' },      // Français : Volet Haut / Volet Bas
-      en: { high: 'HS', low: 'LS' },      // Anglais : High Shutter / Low Shutter
-      es: { high: 'CA', low: 'CB' },      // Espagnol : Compuerta Alta / Compuerta Baja
-      it: { high: 'SA', low: 'SB' },      // Italien : Serranda Alta / Serranda Bassa
+      fr: { high: 'VH', low: 'VB' },
+      en: { high: 'HS', low: 'LS' },
+      es: { high: 'CA', low: 'CB' },
+      it: { high: 'SA', low: 'SB' },
     };
     
     return prefixes[language as keyof typeof prefixes]?.[shutterType] || prefixes.fr[shutterType];
@@ -44,22 +49,22 @@ export default function EditShutterScreen() {
 
   useEffect(() => {
     loadShutter();
-  }, [id]);
+  }, [id, projects]);
 
   const loadShutter = async () => {
     try {
-      const projects = await storage.getProjects();
+      console.log('🔍 Recherche du volet avec ID:', id);
       for (const proj of projects) {
         for (const bldg of proj.buildings) {
           for (const z of bldg.functionalZones) {
             const foundShutter = z.shutters.find(s => s.id === id);
             if (foundShutter) {
+              console.log('✅ Volet trouvé:', foundShutter.name);
               setShutter(foundShutter);
               setZone(z);
               setBuilding(bldg);
               setProject(proj);
               
-              // Pré-remplir les champs
               setName(foundShutter.name);
               setType(foundShutter.type);
               setReferenceFlow(foundShutter.referenceFlow.toString());
@@ -70,6 +75,7 @@ export default function EditShutterScreen() {
           }
         }
       }
+      console.error('❌ Volet non trouvé avec ID:', id);
     } catch (error) {
       console.error('Erreur lors du chargement du volet:', error);
     } finally {
@@ -77,14 +83,18 @@ export default function EditShutterScreen() {
     }
   };
 
-  // CORRIGÉ : Navigation intelligente selon la provenance
+  // CORRIGÉ : Retourner vers la page du volet (et non de la zone)
   const handleBack = () => {
     try {
-      if (from === 'search') {
-        // Si on vient de la recherche, retourner à la recherche
+      if (shutter) {
+        if (from === 'search') {
+          router.push(`/(tabs)/shutter/${shutter.id}?from=search`);
+        } else {
+          router.push(`/(tabs)/shutter/${shutter.id}`);
+        }
+      } else if (from === 'search') {
         router.push('/(tabs)/search');
       } else if (zone) {
-        // Sinon, retourner vers la zone (d'où on vient)
         router.push(`/(tabs)/zone/${zone.id}`);
       } else {
         router.push('/(tabs)/');
@@ -121,7 +131,9 @@ export default function EditShutterScreen() {
 
     setLoading(true);
     try {
-      const updatedShutter = await storage.updateShutter(shutter.id, {
+      console.log('💾 Sauvegarde du volet:', shutter.id);
+      
+      const updatedShutter = await updateShutter(shutter.id, {
         name: name.trim(),
         type,
         referenceFlow: parseFloat(referenceFlow),
@@ -130,16 +142,15 @@ export default function EditShutterScreen() {
       });
 
       if (updatedShutter) {
-        // CORRIGÉ : Navigation intelligente selon la provenance
+        console.log('✅ Volet mis à jour avec succès');
+        // CORRIGÉ : Retourner vers la page du volet (et non de la zone)
         if (from === 'search') {
-          // Si on vient de la recherche, retourner à la recherche
-          router.push('/(tabs)/search');
-        } else if (zone) {
-          // Sinon, retourner vers la zone (d'où on vient)
-          router.push(`/(tabs)/zone/${zone.id}`);
+          router.push(`/(tabs)/shutter/${shutter.id}?from=search`);
         } else {
-          router.push('/(tabs)/');
+          router.push(`/(tabs)/shutter/${shutter.id}`);
         }
+      } else {
+        console.error('❌ Erreur: Volet non trouvé pour la mise à jour');
       }
     } catch (error) {
       console.error('Erreur lors de la modification du volet:', error);
@@ -150,18 +161,17 @@ export default function EditShutterScreen() {
 
   const handleTypeChange = (newType: ShutterType) => {
     setType(newType);
-    // NOUVEAU : Mettre à jour le préfixe selon la langue et le type
     const newPrefix = getShutterPrefix(newType, currentLanguage);
     const oldPrefix = getShutterPrefix(newType === 'high' ? 'low' : 'high', currentLanguage);
     
-    // Remplacer l'ancien préfixe par le nouveau, ou utiliser le nouveau préfixe si pas de correspondance
     if (name.startsWith(oldPrefix)) {
       setName(name.replace(oldPrefix, newPrefix));
     } else {
       // Si le nom ne commence pas par un préfixe connu, on garde le nom existant
-      // mais on peut suggérer le nouveau préfixe dans le placeholder
     }
   };
+
+  const styles = createStyles(theme);
 
   if (initialLoading) {
     return (
@@ -185,7 +195,6 @@ export default function EditShutterScreen() {
     );
   }
 
-  // Calculer la conformité avec les valeurs actuelles
   const currentCompliance = calculateCompliance(parseFloat(referenceFlow) || 0, parseFloat(measuredFlow) || 0);
 
   return (
@@ -214,7 +223,7 @@ export default function EditShutterScreen() {
         />
 
         <View style={styles.typeContainer}>
-          <Text style={[styles.typeLabel, isDark && styles.typeLabelDark]}>{strings.shutterType} *</Text>
+          <Text style={styles.typeLabel}>{strings.shutterType} *</Text>
           <View style={styles.typeOptions}>
             <TouchableOpacity
               style={[styles.typeOption, type === 'high' && styles.typeOptionSelected]}
@@ -242,7 +251,6 @@ export default function EditShutterScreen() {
           placeholder="Ex: 5000"
           keyboardType="numeric"
           error={errors.referenceFlow}
-          clearZeroOnFocus={referenceFlow === '0'}
         />
 
         <Input
@@ -252,7 +260,6 @@ export default function EditShutterScreen() {
           placeholder="Ex: 4800"
           keyboardType="numeric"
           error={errors.measuredFlow}
-          clearZeroOnFocus={measuredFlow === '0'}
         />
 
         <Input
@@ -264,14 +271,13 @@ export default function EditShutterScreen() {
           numberOfLines={3}
         />
 
-        {/* Aperçu de la conformité en temps réel */}
         {referenceFlow && measuredFlow && !isNaN(parseFloat(referenceFlow)) && !isNaN(parseFloat(measuredFlow)) && (
           <View style={styles.previewCard}>
-            <Text style={[styles.previewTitle, isDark && styles.previewTitleDark]}>{strings.compliancePreview}</Text>
+            <Text style={styles.previewTitle}>{strings.compliancePreview}</Text>
             
             <View style={styles.previewFlow}>
               <View style={styles.previewFlowItem}>
-                <Text style={[styles.previewFlowLabel, isDark && styles.previewFlowLabelDark]}>{strings.calculatedDeviation}</Text>
+                <Text style={styles.previewFlowLabel}>{strings.calculatedDeviation}</Text>
                 <Text style={[styles.previewFlowValue, { color: currentCompliance.color }]}>
                   {formatDeviation(currentCompliance.deviation)}
                 </Text>
@@ -286,7 +292,7 @@ export default function EditShutterScreen() {
 
         <View style={styles.buttonContainer}>
           <Button
-            title={strings.saveChanges}
+            title={loading ? "Sauvegarde..." : strings.saveChanges}
             onPress={handleSave}
             disabled={loading}
           />
@@ -296,10 +302,10 @@ export default function EditShutterScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.background,
   },
   content: {
     flex: 1,
@@ -316,7 +322,7 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
   },
   errorContainer: {
     flex: 1,
@@ -327,7 +333,7 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
     textAlign: 'center',
   },
   typeContainer: {
@@ -336,12 +342,8 @@ const styles = StyleSheet.create({
   typeLabel: {
     fontSize: 14,
     fontFamily: 'Inter-Medium',
-    color: '#374151',
+    color: theme.colors.textSecondary,
     marginBottom: 6,
-  },
-  // NOUVEAU : Style pour le label en mode sombre
-  typeLabelDark: {
-    color: '#D1D5DB',
   },
   typeOptions: {
     flexDirection: 'row',
@@ -353,24 +355,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#D1D5DB',
-    backgroundColor: '#ffffff',
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
     alignItems: 'center',
   },
   typeOptionSelected: {
-    borderColor: '#009999',
-    backgroundColor: '#F0FDFA',
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.primary + '20',
   },
   typeOptionText: {
     fontSize: 14,
     fontFamily: 'Inter-Medium',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
   },
   typeOptionTextSelected: {
-    color: '#009999',
+    color: theme.colors.primary,
   },
   previewCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 24,
@@ -380,17 +382,13 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: theme.colors.border,
   },
   previewTitle: {
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
-    color: '#111827',
+    color: theme.colors.text,
     marginBottom: 12,
-  },
-  // NOUVEAU : Style pour le titre en mode sombre
-  previewTitleDark: {
-    color: '#F9FAFB',
   },
   previewFlow: {
     alignItems: 'center',
@@ -402,12 +400,8 @@ const styles = StyleSheet.create({
   previewFlowLabel: {
     fontSize: 12,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
     marginBottom: 4,
-  },
-  // NOUVEAU : Style pour le label en mode sombre
-  previewFlowLabelDark: {
-    color: '#9CA3AF',
   },
   previewFlowValue: {
     fontSize: 20,

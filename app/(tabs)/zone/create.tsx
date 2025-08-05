@@ -1,23 +1,22 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform, useColorScheme } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Header } from '@/components/Header';
 import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
-import { storage } from '@/utils/storage';
+import { useStorage } from '@/contexts/StorageContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useTheme } from '@/contexts/ThemeContext';
 
 export default function CreateZoneScreen() {
   const { strings } = useLanguage();
+  const { theme } = useTheme();
+  const { createFunctionalZone } = useStorage();
   const { buildingId } = useLocalSearchParams<{ buildingId: string }>();
   const [name, setName] = useState('ZF');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ name?: string }>({});
-
-  // NOUVEAU : Détecter le thème système
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
 
   const handleBack = () => {
     if (buildingId) {
@@ -44,23 +43,30 @@ export default function CreateZoneScreen() {
 
     setLoading(true);
     try {
-      const zone = await storage.createFunctionalZone(buildingId, {
+      console.log('🏢 Création de la zone:', name.trim(), 'dans le bâtiment:', buildingId);
+      
+      const zone = await createFunctionalZone(buildingId, {
         name: name.trim(),
         description: description.trim() || undefined,
       });
 
       if (zone) {
+        console.log('✅ Zone créée avec succès:', zone.id);
         // CORRIGÉ : Naviguer vers la zone créée
         router.push(`/(tabs)/zone/${zone.id}`);
       } else {
+        console.error('❌ Erreur: Zone non créée');
         Alert.alert(strings.error, 'Impossible de créer la zone. Bâtiment introuvable.');
       }
     } catch (error) {
+      console.error('❌ Erreur lors de la création de la zone:', error);
       Alert.alert(strings.error, 'Impossible de créer la zone. Veuillez réessayer.');
     } finally {
       setLoading(false);
     }
   };
+
+  const styles = createStyles(theme);
 
   return (
     <KeyboardAvoidingView 
@@ -87,7 +93,7 @@ export default function CreateZoneScreen() {
         />
 
         <Input
-          label={strings.description + " (" + strings.optional + ")"}
+          label={`Description (${strings.optional})`}
           value={description}
           onChangeText={setDescription}
           placeholder="Ex: Hall d'entrée principal"
@@ -97,7 +103,7 @@ export default function CreateZoneScreen() {
 
         <View style={styles.buttonContainer}>
           <Button
-            title={strings.createZone}
+            title={loading ? "Création..." : strings.createZone}
             onPress={handleCreate}
             disabled={loading}
           />
@@ -107,10 +113,10 @@ export default function CreateZoneScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.background,
   },
   content: {
     flex: 1,

@@ -129,7 +129,7 @@ Créez un fichier `.env` à la racine :
 
 ```env
 EXPO_PUBLIC_API_URL=https://api.example.com
-EXPO_PUBLIC_VERSION=1.0.2
+EXPO_PUBLIC_VERSION=2.0.0
 ```
 
 ### Personnalisation

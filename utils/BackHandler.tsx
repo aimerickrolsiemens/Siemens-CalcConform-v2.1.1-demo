@@ -4,45 +4,68 @@ import { router } from 'expo-router';
 
 /**
  * Custom hook to handle Android back button presses
- * @param customAction Optional custom action to run on back press
- * @returns void
+ * Optimisé pour APK Android avec gestion d'erreur robuste
  */
 export function useAndroidBackButton(customAction?: () => boolean) {
   useEffect(() => {
-    // Only apply this on Android
+    // Seulement sur Android pour éviter les erreurs sur autres plateformes
     if (Platform.OS !== 'android') return;
 
     const backAction = () => {
-      // If there's a custom action, run it first
-      if (customAction && customAction()) {
-        return true;
-      }
+      try {
+        // Si il y a une action personnalisée, l'exécuter en premier
+        if (customAction && customAction()) {
+          return true;
+        }
 
-      // Check if we can go back in the navigation stack
-      if (router.canGoBack()) {
-        router.back();
-        return true;
-      }
+        // Vérifier si on peut revenir en arrière dans la pile de navigation
+        if (router.canGoBack()) {
+          router.back();
+          return true;
+        }
 
-      // If we're on the home screen, let the default behavior happen
-      // (which will exit the app after a second press)
-      return false;
+        // Si on est sur l'écran d'accueil, laisser le comportement par défaut
+        return false;
+      } catch (error) {
+        if (__DEV__) {
+          console.warn('Erreur dans useAndroidBackButton:', error);
+        }
+        return false;
+      }
     };
 
-    // Add event listener
-    const backHandler = BackHandler.addEventListener(
-      'hardwareBackPress',
-      backAction
-    );
+    // Ajouter l'écouteur d'événement avec gestion d'erreur
+    let backHandler: any = null;
+    try {
+      backHandler = BackHandler.addEventListener(
+        'hardwareBackPress',
+        backAction
+      );
+    } catch (error) {
+      if (__DEV__) {
+        console.warn('Erreur lors de l\'ajout du BackHandler:', error);
+      }
+      return;
+    }
 
-    // Clean up the event listener on unmount
-    return () => backHandler.remove();
+    // Nettoyer l'écouteur au démontage
+    return () => {
+      try {
+        if (backHandler && backHandler.remove) {
+          backHandler.remove();
+        }
+      } catch (error) {
+        if (__DEV__) {
+          console.warn('Erreur lors du nettoyage BackHandler:', error);
+        }
+      }
+    };
   }, [customAction]);
 }
 
 /**
- * Custom hook to handle Android back button with double press to exit
- * Only use this on the root screen (home/index)
+ * Custom hook pour gérer le double appui pour quitter
+ * Optimisé pour APK Android avec gestion d'erreur robuste
  */
 export function useDoubleBackToExit() {
   useEffect(() => {
@@ -52,37 +75,57 @@ export function useDoubleBackToExit() {
     let backPressTimer: NodeJS.Timeout | null = null;
 
     const handleBackPress = () => {
-      // If this is the first press or the timer has expired
-      if (backPressCount === 0 || !backPressTimer) {
-        backPressCount = 1;
+      try {
+        // Si c'est le premier appui ou que le timer a expiré
+        if (backPressCount === 0 || !backPressTimer) {
+          backPressCount = 1;
+          
+          // Réinitialiser le compteur après 2 secondes
+          backPressTimer = setTimeout(() => {
+            backPressCount = 0;
+            backPressTimer = null;
+          }, 2000);
+          
+          return true; // Empêcher le comportement par défaut
+        } 
         
-        // Show toast message (you can implement your own toast)
-        console.log('Press back again to exit');
-        
-        // Reset the counter after 2 seconds
-        backPressTimer = setTimeout(() => {
-          backPressCount = 0;
-          backPressTimer = null;
-        }, 2000);
-        
-        return true; // Prevent default behavior
-      } 
-      
-      // This is the second press within the time window
-      // Let the default behavior happen (exit the app)
-      return false;
+        // C'est le deuxième appui dans la fenêtre de temps
+        // Laisser le comportement par défaut (quitter l'app)
+        return false;
+      } catch (error) {
+        if (__DEV__) {
+          console.warn('Erreur dans useDoubleBackToExit:', error);
+        }
+        return false;
+      }
     };
 
-    const backHandler = BackHandler.addEventListener(
-      'hardwareBackPress',
-      handleBackPress
-    );
+    let backHandler: any = null;
+    try {
+      backHandler = BackHandler.addEventListener(
+        'hardwareBackPress',
+        handleBackPress
+      );
+    } catch (error) {
+      if (__DEV__) {
+        console.warn('Erreur lors de l\'ajout du DoubleBackToExit:', error);
+      }
+      return;
+    }
 
     return () => {
-      if (backPressTimer) {
-        clearTimeout(backPressTimer);
+      try {
+        if (backPressTimer) {
+          clearTimeout(backPressTimer);
+        }
+        if (backHandler && backHandler.remove) {
+          backHandler.remove();
+        }
+      } catch (error) {
+        if (__DEV__) {
+          console.warn('Erreur lors du nettoyage DoubleBackToExit:', error);
+        }
       }
-      backHandler.remove();
     };
   }, []);
 }

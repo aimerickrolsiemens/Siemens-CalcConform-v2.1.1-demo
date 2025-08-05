@@ -31,9 +31,9 @@ export interface Shutter {
   id: string;
   zoneId: string;
   name: string;
-  type: 'high' | 'low'; // Volet Haut ou Bas
-  referenceFlow: number; // Débit de référence
-  measuredFlow: number; // Débit mesuré
+  type: ShutterType;
+  referenceFlow: number;
+  measuredFlow: number;
   remarks?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -48,6 +48,16 @@ export interface ComplianceResult {
 
 export type ShutterType = 'high' | 'low';
 export type ComplianceStatus = 'compliant' | 'acceptable' | 'non-compliant';
+
+// Note interface
+export interface Note {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: Date;
+  updatedAt: Date;
+  images?: string[]; // Base64 encoded images
+}
 
 // Search result interface
 export interface SearchResult {

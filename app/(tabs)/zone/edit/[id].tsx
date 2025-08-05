@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, useColorScheme } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Header } from '@/components/Header';
 import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
 import { Project, Building, FunctionalZone } from '@/types';
-import { storage } from '@/utils/storage';
+import { useStorage } from '@/contexts/StorageContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useAndroidBackButton } from '@/utils/BackHandler';
 
 export default function EditZoneScreen() {
   const { strings } = useLanguage();
+  const { theme } = useTheme();
+  const { projects, updateFunctionalZone } = useStorage();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [zone,setZone] = useState<FunctionalZone | null>(null);
+  const [zone, setZone] = useState<FunctionalZone | null>(null);
   const [building, setBuilding] = useState<Building | null>(null);
   const [project, setProject] = useState<Project | null>(null);
   const [name, setName] = useState('');
@@ -20,21 +24,24 @@ export default function EditZoneScreen() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [errors, setErrors] = useState<{ name?: string }>({});
 
-  // NOUVEAU : Détecter le thème système
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  // Configure Android back button to go back to the zone screen
+  useAndroidBackButton(() => {
+    handleBack();
+    return true;
+  });
 
   useEffect(() => {
     loadZone();
-  }, [id]);
+  }, [id, projects]);
 
   const loadZone = async () => {
     try {
-      const projects = await storage.getProjects();
+      console.log('🔍 Recherche de la zone avec ID:', id);
       for (const proj of projects) {
         for (const bldg of proj.buildings) {
           const foundZone = bldg.functionalZones.find(z => z.id === id);
           if (foundZone) {
+            console.log('✅ Zone trouvée:', foundZone.name);
             setZone(foundZone);
             setBuilding(bldg);
             setProject(proj);
@@ -44,6 +51,7 @@ export default function EditZoneScreen() {
           }
         }
       }
+      console.error('❌ Zone non trouvée avec ID:', id);
     } catch (error) {
       console.error('Erreur lors du chargement de la zone:', error);
     } finally {
@@ -51,10 +59,12 @@ export default function EditZoneScreen() {
     }
   };
 
-  // CORRIGÉ : Retourner vers la page du bâtiment (d'où on vient)
+  // CORRIGÉ : Retourner vers la page de la zone (et non du bâtiment)
   const handleBack = () => {
     try {
-      if (building) {
+      if (zone) {
+        router.push(`/(tabs)/zone/${zone.id}`);
+      } else if (building) {
         router.push(`/(tabs)/building/${building.id}`);
       } else {
         router.push('/(tabs)/');
@@ -81,18 +91,19 @@ export default function EditZoneScreen() {
 
     setLoading(true);
     try {
-      const updatedZone = await storage.updateFunctionalZone(zone.id, {
+      console.log('💾 Sauvegarde de la zone:', zone.id);
+      
+      const updatedZone = await updateFunctionalZone(zone.id, {
         name: name.trim(),
         description: description.trim() || undefined,
       });
 
       if (updatedZone) {
-        // CORRIGÉ : Retourner vers la page du bâtiment (d'où on vient)
-        if (building) {
-          router.push(`/(tabs)/building/${building.id}`);
-        } else {
-          router.push('/(tabs)/');
-        }
+        console.log('✅ Zone mise à jour avec succès');
+        // CORRIGÉ : Retourner vers la page de la zone (et non du bâtiment)
+        router.push(`/(tabs)/zone/${zone.id}`);
+      } else {
+        console.error('❌ Erreur: Zone non trouvée pour la mise à jour');
       }
     } catch (error) {
       console.error('Erreur lors de la modification de la zone:', error);
@@ -100,6 +111,8 @@ export default function EditZoneScreen() {
       setLoading(false);
     }
   };
+
+  const styles = createStyles(theme);
 
   if (initialLoading) {
     return (
@@ -149,7 +162,7 @@ export default function EditZoneScreen() {
         />
 
         <Input
-          label={`${strings.description} (${strings.optional})`}
+          label={`Description (${strings.optional})`}
           value={description}
           onChangeText={setDescription}
           placeholder="Ex: Hall d'entrée principal"
@@ -159,7 +172,7 @@ export default function EditZoneScreen() {
 
         <View style={styles.buttonContainer}>
           <Button
-            title={strings.saveChanges}
+            title={loading ? "Sauvegarde..." : strings.saveChanges}
             onPress={handleSave}
             disabled={loading}
           />
@@ -169,10 +182,10 @@ export default function EditZoneScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.background,
   },
   content: {
     flex: 1,
@@ -189,7 +202,7 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
   },
   errorContainer: {
     flex: 1,
@@ -200,7 +213,7 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
     textAlign: 'center',
   },
   buttonContainer: {

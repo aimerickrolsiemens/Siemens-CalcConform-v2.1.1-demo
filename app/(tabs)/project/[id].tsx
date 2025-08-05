@@ -1,24 +1,38 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, ScrollView, TextInput } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ScrollView, TextInput, Platform, Animated } from 'react-native';
 import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
-import { Plus, Settings, Building, Wind, Star, Trash2, SquareCheck as CheckSquare, Square } from 'lucide-react-native';
+import { Plus, Settings, Building, Wind, Star, Trash2, SquareCheck as CheckSquare, Square, X } from 'lucide-react-native';
 import { Header } from '@/components/Header';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 import { Project, Building as BuildingType, FunctionalZone } from '@/types';
-import { storage } from '@/utils/storage';
+import { useStorage } from '@/contexts/StorageContext';
 import { calculateCompliance, formatDeviation } from '@/utils/compliance';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useAndroidBackButton } from '@/utils/BackHandler';
+import { LoadingScreen } from '@/components/LoadingScreen';
+import { useModal } from '@/contexts/ModalContext';
 
 export default function ProjectDetailScreen() {
   const { strings } = useLanguage();
+  const { theme } = useTheme();
+  const { showModal, hideModal } = useModal();
+  const { 
+    projects,
+    favoriteBuildings,
+    createBuilding,
+    deleteBuilding,
+    setFavoriteBuildings,
+    updateBuilding,
+    storage
+  } = useStorage();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
-  const [createBuildingModalVisible, setCreateBuildingModalVisible] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedBuildings, setSelectedBuildings] = useState<Set<string>>(new Set());
-  const [favoriteBuildings, setFavoriteBuildings] = useState<Set<string>>(new Set());
+  const fadeAnim = useRef(new Animated.Value(0)).current;
   
   // Form states
   const [buildingName, setBuildingName] = useState('');
@@ -26,30 +40,16 @@ export default function ProjectDetailScreen() {
   const [formLoading, setFormLoading] = useState(false);
   const [errors, setErrors] = useState<{ name?: string }>({});
 
-  // NOUVEAU : Modal pour éditer le nom du bâtiment
-  const [nameEditModal, setNameEditModal] = useState<{
-    visible: boolean;
-    building: BuildingType | null;
-    name: string;
-  }>({ visible: false, building: null, name: '' });
 
-  // NOUVEAU : Référence pour l'auto-focus
-  const nameInputRef = useRef<TextInput>(null);
+  // Configure Android back button to go back to the home screen
+  useAndroidBackButton(() => {
+    handleBack();
+    return true;
+  });
 
-  // NOUVEAU : Auto-focus sur l'input du nom quand le modal s'ouvre
-  useEffect(() => {
-    if (nameEditModal.visible && nameInputRef.current) {
-      const timer = setTimeout(() => {
-        nameInputRef.current?.focus();
-      }, 300);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [nameEditModal.visible]);
 
   const loadProject = useCallback(async () => {
     try {
-      const projects = await storage.getProjects();
       const foundProject = projects.find(p => p.id === id);
       setProject(foundProject || null);
     } catch (error) {
@@ -57,30 +57,27 @@ export default function ProjectDetailScreen() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
-
-  const loadFavorites = useCallback(async () => {
-    try {
-      const favorites = await storage.getFavoriteBuildings();
-      setFavoriteBuildings(new Set(favorites));
-    } catch (error) {
-      console.error('Erreur lors du chargement des favoris:', error);
-    }
-  }, []);
+  }, [id, projects]);
 
   // NOUVEAU : Utiliser useFocusEffect pour recharger les données quand on revient sur la page
   useFocusEffect(
     useCallback(() => {
       console.log('Project screen focused, reloading data...');
       loadProject();
-      loadFavorites();
-    }, [loadProject, loadFavorites])
+      
+      // Animation de fondu à l'entrée
+      fadeAnim.setValue(0);
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }, [loadProject])
   );
 
   useEffect(() => {
     loadProject();
-    loadFavorites();
-  }, [loadProject, loadFavorites]);
+  }, [loadProject]);
 
   const handleBack = () => {
     try {
@@ -100,8 +97,11 @@ export default function ProjectDetailScreen() {
   };
 
   const handleCreateBuilding = () => {
-    resetForm();
-    setCreateBuildingModalVisible(true);
+    try {
+      router.push(`/(tabs)/building/create?projectId=${id}`);
+    } catch (error) {
+      console.error('Erreur de navigation vers création bâtiment:', error);
+    }
   };
 
   const handleSelectionMode = () => {
@@ -122,25 +122,30 @@ export default function ProjectDetailScreen() {
   const handleBulkDelete = () => {
     if (selectedBuildings.size === 0) return;
 
-    Alert.alert(
-      strings.delete + ' ' + strings.buildings.toLowerCase(),
-      `Êtes-vous sûr de vouloir supprimer ${selectedBuildings.size} bâtiment${selectedBuildings.size > 1 ? 's' : ''} ?`,
-      [
-        { text: strings.cancel, style: 'cancel' },
-        {
-          text: strings.delete,
-          style: 'destructive',
-          onPress: async () => {
-            for (const buildingId of selectedBuildings) {
-              await storage.deleteBuilding(buildingId);
-            }
-            setSelectedBuildings(new Set());
-            setSelectionMode(false);
-            loadProject();
-          }
+    showModal(<BulkDeleteBuildingsModal 
+      count={selectedBuildings.size}
+      onConfirm={() => confirmBulkDeleteBuildings()}
+      onCancel={() => hideModal()}
+      strings={strings}
+    />);
+  };
+
+  const confirmBulkDeleteBuildings = async () => {
+    try {
+      console.log('🗑️ Suppression en lot de', selectedBuildings.size, 'bâtiments');
+      for (const buildingId of selectedBuildings) {
+        const success = await deleteBuilding(buildingId);
+        if (!success) {
+          console.error('Erreur lors de la suppression du bâtiment:', buildingId);
         }
-      ]
-    );
+      }
+      setSelectedBuildings(new Set());
+      setSelectionMode(false);
+      hideModal();
+    } catch (error) {
+      console.error('Erreur lors de la suppression en lot:', error);
+      hideModal();
+    }
   };
 
   const handleBulkFavorite = async () => {
@@ -155,10 +160,20 @@ export default function ProjectDetailScreen() {
       }
     }
     
-    setFavoriteBuildings(newFavorites);
-    await storage.setFavoriteBuildings(Array.from(newFavorites));
+    await setFavoriteBuildings(Array.from(newFavorites));
     setSelectedBuildings(new Set());
     setSelectionMode(false);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedBuildings.size === sortedBuildings.length) {
+      // Si tout est sélectionné, tout désélectionner
+      setSelectedBuildings(new Set());
+    } else {
+      // Sinon, tout sélectionner
+      const allBuildingIds = new Set(sortedBuildings.map(b => b.id));
+      setSelectedBuildings(allBuildingIds);
+    }
   };
 
   const handleToggleFavorite = async (buildingId: string) => {
@@ -169,8 +184,7 @@ export default function ProjectDetailScreen() {
       newFavorites.add(buildingId);
     }
     
-    setFavoriteBuildings(newFavorites);
-    await storage.setFavoriteBuildings(Array.from(newFavorites));
+    await setFavoriteBuildings(Array.from(newFavorites));
   };
 
   const validateForm = () => {
@@ -184,33 +198,6 @@ export default function ProjectDetailScreen() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmitBuilding = async () => {
-    if (!validateForm() || !project) return;
-
-    setFormLoading(true);
-    try {
-      const building = await storage.createBuilding(project.id, {
-        name: buildingName.trim(),
-        description: buildingDescription.trim() || undefined,
-      });
-
-      if (building) {
-        setCreateBuildingModalVisible(false);
-        resetForm();
-        loadProject();
-        
-        // Navigation directe vers le bâtiment créé
-        router.push(`/(tabs)/building/${building.id}`);
-      } else {
-        Alert.alert(strings.error, 'Impossible de créer le bâtiment.');
-      }
-    } catch (error) {
-      Alert.alert(strings.error, 'Impossible de créer le bâtiment. Veuillez réessayer.');
-    } finally {
-      setFormLoading(false);
-    }
-  };
-
   const handleBuildingPress = (building: BuildingType) => {
     if (selectionMode) {
       handleBuildingSelection(building.id);
@@ -221,25 +208,49 @@ export default function ProjectDetailScreen() {
 
   // NOUVEAU : Fonction pour ouvrir le modal d'édition du nom
   const openNameEditModal = (building: BuildingType) => {
-    setNameEditModal({
-      visible: true,
-      building,
-      name: building.name
-    });
+    showModal(<EditBuildingNameModal 
+      building={building}
+      onSave={saveNameChange}
+      onCancel={() => hideModal()}
+      strings={strings}
+    />);
   };
 
-  // NOUVEAU : Fonction pour sauvegarder le changement de nom
-  const saveNameChange = async () => {
-    if (!nameEditModal.building || !nameEditModal.name.trim()) return;
+  // CORRIGÉ : Fonction pour sauvegarder le changement de nom avec mise à jour instantanée
+  const saveNameChange = async (building: BuildingType, newName: string) => {
+    if (!building || !newName.trim()) return;
 
     try {
-      await storage.updateBuilding(nameEditModal.building.id, {
-        name: nameEditModal.name.trim(),
+      console.log('✏️ Modification du nom du bâtiment:', building.id, 'nouveau nom:', newName.trim());
+      
+      const updatedBuilding = await updateBuilding(building.id, {
+        name: newName.trim(),
       });
       
-      setNameEditModal({ visible: false, building: null, name: '' });
-      loadProject();
+      if (updatedBuilding) {
+        console.log('✅ Nom du bâtiment modifié avec succès');
+        
+        // CORRIGÉ : Mise à jour instantanée de l'état local du projet
+        setProject(prevProject => {
+          if (!prevProject) return prevProject;
+          
+          return {
+            ...prevProject,
+            buildings: prevProject.buildings.map(b => 
+              b.id === building.id 
+                ? { ...b, name: newName.trim() }
+                : b
+            )
+          };
+        });
+        
+        hideModal();
+      } else {
+        console.error('❌ Erreur: Bâtiment non trouvé pour la modification');
+        Alert.alert(strings.error, 'Impossible de modifier le nom du bâtiment');
+      }
     } catch (error) {
+      console.error('❌ Erreur lors de la modification du nom:', error);
       Alert.alert(strings.error, 'Impossible de modifier le nom du bâtiment');
     }
   };
@@ -253,21 +264,29 @@ export default function ProjectDetailScreen() {
   };
 
   const handleDeleteBuilding = async (building: BuildingType) => {
-    Alert.alert(
-      strings.deleteBuilding,
-      `Êtes-vous sûr de vouloir supprimer le bâtiment "${building.name}" ?`,
-      [
-        { text: strings.cancel, style: 'cancel' },
-        {
-          text: strings.delete,
-          style: 'destructive',
-          onPress: async () => {
-            await storage.deleteBuilding(building.id);
-            loadProject();
-          }
-        }
-      ]
-    );
+    showModal(<DeleteBuildingModal 
+      building={building}
+      onConfirm={() => confirmDeleteBuilding(building)}
+      onCancel={() => hideModal()}
+      strings={strings}
+    />);
+  };
+
+  const confirmDeleteBuilding = async (building: BuildingType) => {
+    try {
+      console.log('🗑️ Confirmation suppression bâtiment:', building.id);
+      const success = await deleteBuilding(building.id);
+      if (success) {
+        console.log('✅ Bâtiment supprimé avec succès');
+        hideModal();
+      } else {
+        console.error('❌ Erreur: Bâtiment non trouvé pour la suppression');
+        hideModal();
+      }
+    } catch (error) {
+      console.error('Erreur lors de la suppression:', error);
+      hideModal();
+    }
   };
 
   const handleEditProject = () => {
@@ -286,25 +305,32 @@ export default function ProjectDetailScreen() {
     let compliantCount = 0;
     let acceptableCount = 0;
     let nonCompliantCount = 0;
+    let totalMeasuredShutters = 0;
 
     building.functionalZones.forEach(zone => {
       zone.shutters.forEach(shutter => {
-        const compliance = calculateCompliance(shutter.referenceFlow, shutter.measuredFlow);
-        switch (compliance.status) {
-          case 'compliant':
-            compliantCount++;
-            break;
-          case 'acceptable':
-            acceptableCount++;
-            break;
-          case 'non-compliant':
-            nonCompliantCount++;
-            break;
+        // Ne compter que les volets qui ont des valeurs de référence
+        if (shutter.referenceFlow > 0) {
+          totalMeasuredShutters++;
+          const compliance = calculateCompliance(shutter.referenceFlow, shutter.measuredFlow);
+          switch (compliance.status) {
+            case 'compliant':
+              compliantCount++;
+              break;
+            case 'acceptable':
+              acceptableCount++;
+              break;
+            case 'non-compliant':
+              nonCompliantCount++;
+              break;
+          }
         }
       });
     });
 
-    const complianceRate = shutterCount > 0 ? (compliantCount / shutterCount) * 100 : 0;
+    // CORRIGÉ : Le taux de conformité inclut maintenant les volets fonctionnels ET acceptables
+    const complianceRate = totalMeasuredShutters > 0 ? 
+      ((compliantCount + acceptableCount) / totalMeasuredShutters) * 100 : 0;
 
     return {
       zoneCount,
@@ -312,7 +338,8 @@ export default function ProjectDetailScreen() {
       compliantCount,
       acceptableCount,
       nonCompliantCount,
-      complianceRate
+      complianceRate,
+      totalMeasuredShutters
     };
   };
 
@@ -333,8 +360,8 @@ export default function ProjectDetailScreen() {
 
   // Trier les bâtiments : favoris en premier
   const sortedBuildings = project ? [...project.buildings].sort((a, b) => {
-    const aIsFavorite = favoriteBuildings.has(a.id);
-    const bIsFavorite = favoriteBuildings.has(b.id);
+    const aIsFavorite = Array.isArray(favoriteBuildings) && favoriteBuildings.includes(a.id);
+    const bIsFavorite = Array.isArray(favoriteBuildings) && favoriteBuildings.includes(b.id);
     
     if (aIsFavorite && !bIsFavorite) return -1;
     if (!aIsFavorite && bIsFavorite) return 1;
@@ -344,7 +371,7 @@ export default function ProjectDetailScreen() {
   const renderBuilding = ({ item }: { item: BuildingType }) => {
     const stats = getBuildingStats(item);
     const isSelected = selectedBuildings.has(item.id);
-    const isFavorite = favoriteBuildings.has(item.id);
+    const isFavorite = Array.isArray(favoriteBuildings) && favoriteBuildings.includes(item.id);
     const hasActions = !selectionMode;
     const adaptiveFontSize = getAdaptiveFontSize(item.name, hasActions);
 
@@ -372,13 +399,13 @@ export default function ProjectDetailScreen() {
                   onPress={() => handleBuildingSelection(item.id)}
                 >
                   {isSelected ? (
-                    <CheckSquare size={20} color="#009999" />
+                    <CheckSquare size={20} color={theme.colors.primary} />
                   ) : (
-                    <Square size={20} color="#9CA3AF" />
+                    <Square size={20} color={theme.colors.textTertiary} />
                   )}
                 </TouchableOpacity>
               )}
-              <Building size={20} color="#009999" />
+              <Building size={20} color={theme.colors.primary} />
               {/* NOUVEAU : Nom du bâtiment cliquable pour édition directe */}
               <TouchableOpacity 
                 style={[styles.buildingNameContainer, selectionMode && styles.buildingNameContainerSelection]}
@@ -410,7 +437,7 @@ export default function ProjectDetailScreen() {
               >
                 <Star 
                   size={14} 
-                  color={isFavorite ? "#F59E0B" : "#9CA3AF"} 
+                  color={isFavorite ? "#F59E0B" : theme.colors.textTertiary} 
                   fill={isFavorite ? "#F59E0B" : "none"}
                 />
               </TouchableOpacity>
@@ -418,13 +445,13 @@ export default function ProjectDetailScreen() {
                 style={styles.actionButton}
                 onPress={() => handleEditBuilding(item)}
               >
-                <Settings size={14} color="#009999" />
+                <Settings size={14} color={theme.colors.primary} />
               </TouchableOpacity>
               <TouchableOpacity 
                 style={styles.actionButton}
                 onPress={() => handleDeleteBuilding(item)}
               >
-                <Trash2 size={14} color="#EF4444" />
+                <Trash2 size={14} color={theme.colors.error} />
               </TouchableOpacity>
             </View>
           )}
@@ -433,7 +460,7 @@ export default function ProjectDetailScreen() {
         <View style={styles.buildingContent}>
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
-              <Wind size={16} color="#009999" />
+              <Wind size={16} color={theme.colors.primary} />
               <Text style={styles.statText}>{stats.zoneCount} {strings.zones.toLowerCase()}</Text>
             </View>
             
@@ -472,19 +499,14 @@ export default function ProjectDetailScreen() {
             </View>
           )}
         </View>
-      </TouchableOpacity>
+        </TouchableOpacity>
     );
   };
 
+  const styles = createStyles(theme);
+
   if (loading) {
-    return (
-      <View style={styles.container}>
-        <Header title={strings.loading} onBack={handleBack} />
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>{strings.loadingData}</Text>
-        </View>
-      </View>
-    );
+    return <LoadingScreen title={strings.loading} message={strings.loadingData} />;
   }
 
   if (!project) {
@@ -512,10 +534,10 @@ export default function ProjectDetailScreen() {
               </Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={handleEditProject} style={styles.actionButton}>
-              <Settings size={18} color="#009999" />
+              <Settings size={18} color={theme.colors.primary} />
             </TouchableOpacity>
             <TouchableOpacity onPress={handleCreateBuilding} style={styles.actionButton}>
-              <Plus size={22} color="#009999" />
+              <Plus size={22} color={theme.colors.primary} />
             </TouchableOpacity>
           </View>
         }
@@ -526,169 +548,91 @@ export default function ProjectDetailScreen() {
           <Text style={styles.selectionCount}>
             {selectedBuildings.size} {strings.selected}{selectedBuildings.size > 1 ? 's' : ''}
           </Text>
-          <View style={styles.selectionActions}>
+          <View style={styles.selectionActionsColumn}>
             <TouchableOpacity 
-              style={styles.toolbarButton}
-              onPress={handleBulkFavorite}
-              disabled={selectedBuildings.size === 0}
+              onPress={handleSelectAll}
+              style={[
+                styles.selectAllButton,
+                selectedBuildings.size === sortedBuildings.length 
+                  ? styles.selectAllButtonActive 
+                  : styles.selectAllButtonInactive
+              ]}
             >
-              <Star size={20} color={selectedBuildings.size > 0 ? "#F59E0B" : "#9CA3AF"} />
-              <Text style={[styles.toolbarButtonText, { color: selectedBuildings.size > 0 ? "#F59E0B" : "#9CA3AF" }]}>
-                {strings.favorites}
+              {selectedBuildings.size === sortedBuildings.length ? (
+                <CheckSquare size={20} color="#FFFFFF" />
+              ) : (
+                <Square size={20} color={theme.colors.textTertiary} />
+              )}
+              <Text style={[
+                styles.selectAllButtonText,
+                selectedBuildings.size === sortedBuildings.length 
+                  ? styles.selectAllButtonTextActive 
+                  : styles.selectAllButtonTextInactive
+              ]}>
+                {selectedBuildings.size === sortedBuildings.length ? 'Tout désélectionner' : 'Tout sélectionner'}
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.toolbarButton}
-              onPress={handleBulkDelete}
-              disabled={selectedBuildings.size === 0}
-            >
-              <Trash2 size={20} color={selectedBuildings.size > 0 ? "#EF4444" : "#9CA3AF"} />
-              <Text style={[styles.toolbarButtonText, { color: selectedBuildings.size > 0 ? "#EF4444" : "#9CA3AF" }]}>
-                {strings.delete}
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.selectionActionsRow}>
+              <TouchableOpacity 
+                style={styles.toolbarButton}
+                onPress={handleBulkFavorite}
+                disabled={selectedBuildings.size === 0}
+              >
+                <Star size={20} color={selectedBuildings.size > 0 ? "#F59E0B" : theme.colors.textTertiary} />
+                <Text style={[styles.toolbarButtonText, { color: selectedBuildings.size > 0 ? "#F59E0B" : theme.colors.textTertiary }]}>
+                  {strings.favorites}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.toolbarButton}
+                onPress={handleBulkDelete}
+                disabled={selectedBuildings.size === 0}
+              >
+                <Trash2 size={20} color={selectedBuildings.size > 0 ? theme.colors.error : theme.colors.textTertiary} />
+                <Text style={[styles.toolbarButtonText, { color: selectedBuildings.size > 0 ? theme.colors.error : theme.colors.textTertiary }]}>
+                  {strings.delete}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       )}
 
       <View style={styles.content}>
         {project.buildings.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Building size={64} color="#D1D5DB" />
-            <Text style={styles.emptyTitle}>{strings.noBuildings}</Text>
+          <Animated.View style={[styles.emptyContainer, { opacity: fadeAnim }]}>
+            <Wind size={48} color={theme.colors.textTertiary} />
+            <Text style={styles.emptyTitle}>{strings.noZones}</Text>
             <Text style={styles.emptySubtitle}>
-              {strings.noBuildingsDesc}
+              Ajoutez votre premier bâtiment pour commencer l'analyse de conformité.
             </Text>
             <Button
-              title={strings.createBuilding}
+              title={strings.createBuilding || "Créer un bâtiment"}
               onPress={handleCreateBuilding}
               style={styles.createButton}
             />
-          </View>
+          </Animated.View>
         ) : (
-          <FlatList
-            data={sortedBuildings}
-            renderItem={renderBuilding}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.listContainer}
-            showsVerticalScrollIndicator={false}
-          />
+          <Animated.View style={[{ flex: 1 }, { opacity: fadeAnim }]}>
+            <FlatList
+              data={sortedBuildings}
+              renderItem={renderBuilding}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.listContainer}
+              showsVerticalScrollIndicator={false}
+            />
+          </Animated.View>
         )}
       </View>
 
-      {/* Modal de création de bâtiment */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={createBuildingModalVisible}
-        onRequestClose={() => setCreateBuildingModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{strings.newBuilding}</Text>
-              <TouchableOpacity 
-                onPress={() => setCreateBuildingModalVisible(false)}
-                style={styles.closeButton}
-              >
-                <Text style={styles.closeButtonText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              <Input
-                label={strings.buildingName + " *"}
-                value={buildingName}
-                onChangeText={setBuildingName}
-                placeholder="Ex: Bâtiment A, Tour Nord"
-                error={errors.name}
-              />
-
-              <Input
-                label={strings.description + " (" + strings.optional + ")"}
-                value={buildingDescription}
-                onChangeText={setBuildingDescription}
-                placeholder="Ex: Bâtiment principal, 5 étages"
-                multiline
-                numberOfLines={3}
-              />
-            </ScrollView>
-
-            <View style={styles.modalFooter}>
-              <Button
-                title={strings.cancel}
-                onPress={() => setCreateBuildingModalVisible(false)}
-                variant="secondary"
-                style={styles.modalButton}
-              />
-              <Button
-                title={strings.create}
-                onPress={handleSubmitBuilding}
-                disabled={formLoading}
-                style={styles.modalButton}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* NOUVEAU : Modal pour éditer le nom du bâtiment avec auto-focus */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={nameEditModal.visible}
-        onRequestClose={() => setNameEditModal({ visible: false, building: null, name: '' })}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.nameEditModalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Modifier le nom du bâtiment</Text>
-              <TouchableOpacity 
-                onPress={() => setNameEditModal({ visible: false, building: null, name: '' })}
-                style={styles.closeButton}
-              >
-                <Text style={styles.closeButtonText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.modalBody}>
-              <Text style={styles.inputLabel}>{strings.buildingName} *</Text>
-              <TextInput
-                ref={nameInputRef}
-                style={styles.nameTextInput}
-                value={nameEditModal.name}
-                onChangeText={(text) => setNameEditModal(prev => ({ ...prev, name: text }))}
-                placeholder="Ex: Bâtiment A, Tour Nord"
-                placeholderTextColor="#9CA3AF"
-                autoFocus={true}
-                selectTextOnFocus={true}
-              />
-            </View>
-
-            <View style={styles.modalFooter}>
-              <Button
-                title={strings.cancel}
-                onPress={() => setNameEditModal({ visible: false, building: null, name: '' })}
-                variant="secondary"
-                style={styles.modalButton}
-              />
-              <Button
-                title={strings.save}
-                onPress={saveNameChange}
-                style={styles.modalButton}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.background,
   },
   content: {
     flex: 1,
@@ -701,7 +645,7 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
   },
   errorContainer: {
     flex: 1,
@@ -712,7 +656,7 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
     textAlign: 'center',
   },
   headerActions: {
@@ -724,12 +668,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: theme.colors.surfaceSecondary,
   },
   selectionButtonText: {
     fontSize: 12,
     fontFamily: 'Inter-Medium',
-    color: '#374151',
+    color: theme.colors.textSecondary,
   },
   actionButton: {
     padding: 6,
@@ -740,18 +684,52 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: theme.colors.border,
   },
   selectionCount: {
     fontSize: 16,
     fontFamily: 'Inter-Medium',
-    color: '#111827',
+    color: theme.colors.text,
   },
   selectionActions: {
+    flexDirection: 'column',
+    gap: 8,
+  },
+  selectionActionsColumn: {
+    flexDirection: 'column',
+    gap: 8,
+  },
+  selectionActionsRow: {
     flexDirection: 'row',
-    gap: 16,
+    gap: 12,
+  },
+  selectAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: theme.colors.surfaceSecondary,
+  },
+  selectAllButtonActive: {
+    backgroundColor: theme.colors.primary,
+  },
+  selectAllButtonInactive: {
+    backgroundColor: theme.colors.surfaceSecondary,
+  },
+  selectAllButtonText: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+  },
+  selectAllButtonTextActive: {
+    color: '#FFFFFF',
+  },
+  selectAllButtonTextInactive: {
+    color: theme.colors.textTertiary,
   },
   toolbarButton: {
     flexDirection: 'row',
@@ -760,7 +738,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.surfaceSecondary,
   },
   toolbarButtonText: {
     fontSize: 14,
@@ -775,14 +753,14 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 24,
     fontFamily: 'Inter-Bold',
-    color: '#111827',
+    color: theme.colors.text,
     marginTop: 24,
     marginBottom: 12,
   },
   emptySubtitle: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
     textAlign: 'center',
     marginBottom: 32,
     lineHeight: 24,
@@ -793,8 +771,51 @@ const styles = StyleSheet.create({
   listContainer: {
     padding: 16,
   },
+  modalContent: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: 16,
+    padding: 20,
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '70%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontFamily: 'Inter-SemiBold',
+    color: theme.colors.text,
+    flex: 1,
+  },
+  closeButton: {
+    padding: 4,
+  },
+  modalBody: {
+    marginBottom: 20,
+  },
+  modalText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: theme.colors.textSecondary,
+    lineHeight: 20,
+  },
+  modalBold: {
+    fontFamily: 'Inter-SemiBold',
+    color: theme.colors.text,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+  },
   buildingCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.surface,
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
@@ -806,8 +827,8 @@ const styles = StyleSheet.create({
   },
   selectedCard: {
     borderWidth: 2,
-    borderColor: '#009999',
-    backgroundColor: '#F0FDFA',
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.primary + '20',
   },
   favoriteCard: {
     borderLeftWidth: 4,
@@ -844,7 +865,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 8,
     borderRadius: 6,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.surfaceSecondary,
     minWidth: 0,
   },
   buildingNameContainerSelection: {
@@ -852,7 +873,7 @@ const styles = StyleSheet.create({
   },
   buildingName: {
     fontFamily: 'Inter-Bold',
-    color: '#111827',
+    color: theme.colors.text,
     flex: 1,
     minWidth: 0,
   },
@@ -862,7 +883,7 @@ const styles = StyleSheet.create({
   buildingDescription: {
     fontSize: 14,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
     marginTop: 4,
     marginLeft: 28,
   },
@@ -887,7 +908,7 @@ const styles = StyleSheet.create({
   statText: {
     fontSize: 14,
     fontFamily: 'Inter-Medium',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
   },
   complianceIndicator: {
     width: 8,
@@ -903,7 +924,7 @@ const styles = StyleSheet.create({
     height: 4,
     borderRadius: 2,
     overflow: 'hidden',
-    backgroundColor: '#E5E7EB',
+    backgroundColor: theme.colors.border,
   },
   complianceSegment: {
     height: '100%',
@@ -913,72 +934,217 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-  },
-  modalContent: {
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    width: '100%',
-    maxWidth: 400,
-    maxHeight: '70%',
+    padding: Platform.OS === 'web' ? 0 : 20,
+    ...(Platform.OS === 'web' && {
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 9999,
+      paddingTop: 40,
+      paddingBottom: 100,
+      paddingHorizontal: 20,
+    }),
   },
   // NOUVEAU : Modal spécifique pour l'édition du nom
   nameEditModalContent: {
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.surface,
     borderRadius: 16,
     width: '100%',
     maxWidth: 400,
   },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontFamily: 'Inter-Bold',
-    color: '#111827',
-  },
-  closeButton: {
-    padding: 8,
-  },
-  closeButtonText: {
-    fontSize: 18,
-    color: '#6B7280',
-  },
-  modalBody: {
-    padding: 20,
-    maxHeight: 300,
-  },
-  modalFooter: {
-    flexDirection: 'row',
-    padding: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-    gap: 12,
-  },
-  modalButton: {
-    flex: 1,
-  },
-  // NOUVEAU : Styles pour l'input avec auto-focus
-  inputLabel: {
-    fontSize: 14,
-    fontFamily: 'Inter-Medium',
-    color: '#374151',
-    marginBottom: 6,
-  },
-  nameTextInput: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 16,
-    fontFamily: 'Inter-Regular',
-    backgroundColor: '#ffffff',
-    minHeight: 48,
-  },
 });
+
+// Composants modaux définis au niveau du fichier
+function CreateBuildingModal({ 
+  onSubmit, 
+  onCancel, 
+  buildingName, 
+  setBuildingName, 
+  buildingDescription, 
+  setBuildingDescription, 
+  errors, 
+  loading, 
+  strings 
+}: any) {
+  const { theme } = useTheme();
+  const styles = createStyles(theme);
+
+  return (
+    <View style={styles.modalContent}>
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle}>{strings.newBuilding}</Text>
+        <TouchableOpacity onPress={onCancel} style={styles.closeButton}>
+          <X size={20} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+        <Input
+          label={strings.buildingName + " *"}
+          value={buildingName}
+          onChangeText={setBuildingName}
+          placeholder="Ex: Bâtiment A, Tour Nord"
+          error={errors.name}
+        />
+
+        <Input
+          label={strings.description + " (" + strings.optional + ")"}
+          value={buildingDescription}
+          onChangeText={setBuildingDescription}
+          placeholder="Ex: Bâtiment principal, 5 étages"
+          multiline
+          numberOfLines={3}
+        />
+      </ScrollView>
+
+      <View style={styles.modalFooter}>
+        <Button
+          title={strings.cancel}
+          onPress={onCancel}
+          variant="secondary"
+          style={styles.modalButton}
+        />
+        <Button
+          title={loading ? "Création..." : strings.create}
+          onPress={onSubmit}
+          disabled={loading}
+          style={styles.modalButton}
+        />
+      </View>
+    </View>
+  );
+}
+
+function DeleteBuildingModal({ building, onConfirm, onCancel, strings }: any) {
+  const { theme } = useTheme();
+  const styles = createStyles(theme);
+
+  return (
+    <View style={styles.modalContent}>
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle}>Supprimer le bâtiment</Text>
+        <TouchableOpacity onPress={onCancel} style={styles.closeButton}>
+          <X size={20} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
+      
+      <View style={styles.modalBody}>
+        <Text style={styles.modalText}>
+          <Text>⚠️ </Text>
+          <Text style={styles.modalBold}>Cette action est irréversible !</Text>
+          <Text>{'\n\n'}</Text>
+          <Text>Êtes-vous sûr de vouloir supprimer le bâtiment </Text>
+          <Text style={styles.modalBold}>"{building.name}"</Text>
+          <Text> ?</Text>
+          <Text>{'\n\n'}</Text>
+          <Text>Toutes les zones et volets associés seront également supprimés.</Text>
+        </Text>
+      </View>
+
+      <View style={styles.modalFooter}>
+        <Button
+          title={strings.cancel}
+          onPress={onCancel}
+          variant="secondary"
+          style={styles.modalButton}
+        />
+        <Button
+          title="Supprimer"
+          onPress={onConfirm}
+          variant="danger"
+          style={styles.modalButton}
+        />
+      </View>
+    </View>
+  );
+}
+
+function BulkDeleteBuildingsModal({ count, onConfirm, onCancel, strings }: any) {
+  const { theme } = useTheme();
+  const styles = createStyles(theme);
+
+  return (
+    <View style={styles.modalContent}>
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle}>Supprimer {count} bâtiment{count > 1 ? 's' : ''}</Text>
+        <TouchableOpacity onPress={onCancel} style={styles.closeButton}>
+          <X size={20} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
+      
+      <View style={styles.modalBody}>
+        <Text style={styles.modalText}>
+          <Text>⚠️ </Text>
+          <Text style={styles.modalBold}>Cette action est irréversible !</Text>
+          <Text>{'\n\n'}</Text>
+          <Text>Êtes-vous sûr de vouloir supprimer </Text>
+          <Text style={styles.modalBold}>{count} bâtiment{count > 1 ? 's' : ''}</Text>
+          <Text> ?</Text>
+          <Text>{'\n\n'}</Text>
+          <Text>Toutes les zones et volets associés seront également supprimés.</Text>
+        </Text>
+      </View>
+
+      <View style={styles.modalFooter}>
+        <Button
+          title={strings.cancel}
+          onPress={onCancel}
+          variant="secondary"
+          style={styles.modalButton}
+        />
+        <Button
+          title={`Supprimer ${count > 1 ? 'tout' : 'les bâtiments'}`}
+          onPress={onConfirm}
+          variant="danger"
+          style={styles.modalButton}
+        />
+      </View>
+    </View>
+  );
+}
+
+function EditBuildingNameModal({ building, onSave, onCancel, strings }: any) {
+  const { theme } = useTheme();
+  const [name, setName] = useState(building.name);
+  const styles = createStyles(theme);
+
+  const handleSave = () => {
+    onSave(building, name);
+  };
+
+  return (
+    <View style={styles.nameEditModalContent}>
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle}>Modifier le nom du bâtiment</Text>
+        <TouchableOpacity onPress={onCancel} style={styles.closeButton}>
+          <X size={20} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.modalBody}>
+        <Input
+          label={`${strings.buildingName} *`}
+          value={name}
+          onChangeText={setName}
+          placeholder="Ex: Bâtiment A, Tour Nord"
+        />
+      </View>
+
+      <View style={styles.modalFooter}>
+        <Button
+          title={strings.cancel}
+          onPress={onCancel}
+          variant="secondary"
+          style={styles.modalButton}
+        />
+        <Button
+          title={strings.save}
+          onPress={handleSave}
+          style={styles.modalButton}
+        />
+      </View>
+    </View>
+  );
+}

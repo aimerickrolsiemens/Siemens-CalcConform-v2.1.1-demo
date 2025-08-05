@@ -1,26 +1,25 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, useColorScheme } from 'react-native';
-import { Settings as SettingsIcon, Globe, Trash2, Download, Info, Database, ChevronRight, CircleCheck as CheckCircle, X } from 'lucide-react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
+import { Settings as SettingsIcon, Globe, Trash2, Download, Info, Database, ChevronRight, CircleCheck as CheckCircle, X, Moon, Sun, Smartphone } from 'lucide-react-native';
 import { Header } from '@/components/Header';
 import { Button } from '@/components/Button';
-import { storage } from '@/utils/storage';
+import { useStorage } from '@/contexts/StorageContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useTheme, ThemeMode } from '@/contexts/ThemeContext';
+import { useModal } from '@/contexts/ModalContext';
 import { getLanguageOptions, SupportedLanguage } from '@/utils/i18n';
 import { router } from 'expo-router';
 
 export default function SettingsScreen() {
   const { strings, currentLanguage, changeLanguage } = useLanguage();
-  const [languageModalVisible, setLanguageModalVisible] = useState(false);
-  const [clearDataModalVisible, setClearDataModalVisible] = useState(false);
+  const { theme, themeMode, setThemeMode } = useTheme();
+  const { showModal, hideModal } = useModal();
+  const { clearAllData, getStorageInfo } = useStorage();
   const [storageInfo, setStorageInfo] = useState<{
     projectsCount: number;
     totalShutters: number;
     storageSize: string;
   } | null>(null);
-
-  // NOUVEAU : Détecter le thème système
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
 
   React.useEffect(() => {
     loadStorageInfo();
@@ -28,27 +27,23 @@ export default function SettingsScreen() {
 
   const loadStorageInfo = async () => {
     try {
-      const info = await storage.getStorageInfo();
+      const info = getStorageInfo();
       setStorageInfo(info);
     } catch (error) {
       console.error('Erreur lors du chargement des infos de stockage:', error);
     }
   };
 
-  // CORRIGÉ : Navigation spécifique et forcée vers la page d'accueil des projets
   const handleBack = () => {
     try {
-      // SOLUTION 1 : Utiliser router.dismiss() si on est dans un modal/stack
       if (router.canDismiss()) {
         router.dismiss();
         return;
       }
       
-      // SOLUTION 2 : Navigation directe vers l'index des tabs
       router.navigate('/(tabs)/');
     } catch (error) {
       console.error('Erreur de navigation:', error);
-      // SOLUTION 3 : Fallback ultime
       try {
         router.push('/(tabs)/');
       } catch (fallbackError) {
@@ -59,17 +54,24 @@ export default function SettingsScreen() {
 
   const handleLanguageSelect = (languageCode: SupportedLanguage) => {
     changeLanguage(languageCode);
-    setLanguageModalVisible(false);
+  };
+
+  const handleThemeSelect = (mode: ThemeMode) => {
+    setThemeMode(mode).catch(error => {
+      console.error('Erreur lors du changement de thème:', error);
+    });
   };
 
   const handleClearAllData = () => {
-    setClearDataModalVisible(true);
+    showModal(
+      <ClearDataModal onConfirm={confirmClearData} onCancel={hideModal} />,
+      { animationType: 'fade' }
+    );
   };
 
   const confirmClearData = async () => {
     try {
-      await storage.clearAllData();
-      setClearDataModalVisible(false);
+      await clearAllData();
       Alert.alert(
         strings.dataCleared,
         strings.dataClearedDesc,
@@ -77,15 +79,13 @@ export default function SettingsScreen() {
           text: strings.ok, 
           onPress: () => {
             loadStorageInfo();
-            // CORRIGÉ : Navigation forcée vers l'accueil après suppression
             try {
-              if (router.canDismiss()) {
-                router.dismiss();
-              } else {
-                router.navigate('/(tabs)/');
-              }
+              router.replace('/(tabs)/');
             } catch (error) {
-              router.push('/(tabs)/');
+              console.error('Erreur de navigation:', error);
+              setTimeout(() => {
+                router.replace('/(tabs)/');
+              }, 100);
             }
           }
         }]
@@ -105,6 +105,26 @@ export default function SettingsScreen() {
 
   const handleAbout = () => {
     router.push('/(tabs)/about');
+  };
+
+  const showLanguageModal = () => {
+    showModal(
+      <LanguageModal 
+        currentLanguage={currentLanguage}
+        onLanguageSelect={handleLanguageSelect}
+      />,
+      { animationType: 'fade' }
+    );
+  };
+
+  const showThemeModal = () => {
+    showModal(
+      <ThemeModal 
+        currentTheme={themeMode}
+        onThemeSelect={handleThemeSelect}
+      />,
+      { animationType: 'fade' }
+    );
   };
 
   const renderSettingItem = (
@@ -133,11 +153,35 @@ export default function SettingsScreen() {
           )}
         </View>
       </View>
-      {rightContent || (onPress && <ChevronRight size={20} color="#9CA3AF" />)}
+      {rightContent || (onPress && <ChevronRight size={20} color={theme.colors.textTertiary} />)}
     </TouchableOpacity>
   );
 
+  const getThemeIcon = (mode: ThemeMode) => {
+    switch (mode) {
+      case 'light':
+        return <Sun size={16} color={theme.colors.primary} />;
+      case 'dark':
+        return <Moon size={16} color={theme.colors.primary} />;
+      case 'auto':
+        return <Smartphone size={16} color={theme.colors.primary} />;
+    }
+  };
+
+  const getThemeName = (mode: ThemeMode) => {
+    switch (mode) {
+      case 'light':
+        return 'Mode clair';
+      case 'dark':
+        return 'Mode sombre';
+      case 'auto':
+        return 'Mode automatique';
+    }
+  };
+
   const currentLangOption = getLanguageOptions().find(opt => opt.code === currentLanguage);
+
+  const styles = createStyles(theme);
 
   return (
     <View style={styles.container}>
@@ -145,162 +189,267 @@ export default function SettingsScreen() {
         title={strings.settingsTitle} 
         subtitle={strings.settingsSubtitle}
         onBack={handleBack}
-        showSettings={false}
+        showSettings={true}
       />
       
-      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-        {/* Section Langue */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🌍 {strings.languageAndRegion}</Text>
-          
-          {renderSettingItem(
-            <Globe size={20} color="#009999" />,
-            strings.interfaceLanguage,
-            `${currentLangOption?.flag} ${currentLangOption?.name}`,
-            () => setLanguageModalVisible(true)
-          )}
-        </View>
-
-        {/* Section Données */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>💾 {strings.dataManagement}</Text>
-          
-          {storageInfo && renderSettingItem(
-            <Database size={20} color="#009999" />,
-            strings.storageUsed,
-            `${storageInfo.projectsCount} projets • ${storageInfo.totalShutters} volets • ${storageInfo.storageSize}`
-          )}
-
-          {renderSettingItem(
-            <Download size={20} color="#10B981" />,
-            strings.exportMyData,
-            strings.exportMyDataDesc,
-            handleExportData
-          )}
-
-          {renderSettingItem(
-            <Trash2 size={20} color="#EF4444" />,
-            strings.clearAllData,
-            strings.clearAllDataDesc,
-            handleClearAllData,
-            undefined,
-            true
-          )}
-        </View>
-
-        {/* Section Application */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>ℹ️ {strings.applicationSection}</Text>
-          
-          {renderSettingItem(
-            <Info size={20} color="#009999" />,
-            strings.about,
-            'Version, développeur, conformité',
-            handleAbout
-          )}
-        </View>
-      </ScrollView>
-
-      {/* Modal Langue */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={languageModalVisible}
-        onRequestClose={() => setLanguageModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.languageModalContent}>
-            <View style={styles.modalHeader}>
-              <Globe size={32} color="#009999" />
-              <Text style={styles.modalTitle}>{strings.selectLanguage}</Text>
-              <TouchableOpacity 
-                onPress={() => setLanguageModalVisible(false)}
-                style={styles.closeButton}
-              >
-                <X size={20} color="#6B7280" />
-              </TouchableOpacity>
-            </View>
+      <View style={{ flex: 1 }}>
+        <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
+          {/* Section Apparence */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>🎨 Apparence</Text>
             
-            <View style={styles.translationNote}>
-              <Text style={styles.translationNoteTitle}>{strings.approximateTranslations}</Text>
-              <Text style={styles.translationNoteText}>
-                {strings.translationNote}
-              </Text>
-            </View>
-            
-            <View style={styles.languageList}>
-              {getLanguageOptions().map((option) => (
-                <TouchableOpacity
-                  key={option.code}
-                  style={[
-                    styles.languageOption,
-                    currentLanguage === option.code && styles.languageOptionSelected
-                  ]}
-                  onPress={() => handleLanguageSelect(option.code)}
-                >
-                  <Text style={styles.languageFlag}>{option.flag}</Text>
-                  <Text style={[
-                    styles.languageName,
-                    currentLanguage === option.code && styles.languageNameSelected
-                  ]}>
-                    {option.name}
-                  </Text>
-                  {currentLanguage === option.code && (
-                    <CheckCircle size={20} color="#009999" />
-                  )}
-                </TouchableOpacity>
-              ))}
-            </View>
+            {renderSettingItem(
+              getThemeIcon(themeMode),
+              'Thème de l\'interface',
+              getThemeName(themeMode),
+              showThemeModal
+            )}
           </View>
-        </View>
-      </Modal>
 
-      {/* Modal Confirmation suppression */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={clearDataModalVisible}
-        onRequestClose={() => setClearDataModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{strings.clearAllDataConfirm}</Text>
-            </View>
+          {/* Section Langue */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>🌍 {strings.languageAndRegion}</Text>
             
-            <Text style={styles.modalText}>
-              ⚠️ <Text style={styles.modalBold}>{strings.clearAllDataWarning}</Text>
-              {'\n\n'}
-              Tous vos projets, bâtiments, zones et volets seront définitivement supprimés.
-              {'\n\n'}
-              Assurez-vous d'avoir exporté vos données importantes avant de continuer.
-            </Text>
-
-            <View style={styles.modalFooter}>
-              <Button
-                title={strings.cancel}
-                onPress={() => setClearDataModalVisible(false)}
-                variant="secondary"
-                style={styles.modalButton}
-              />
-              <Button
-                title="Supprimer tout"
-                onPress={confirmClearData}
-                variant="danger"
-                style={styles.modalButton}
-              />
-            </View>
+            {renderSettingItem(
+              <Globe size={20} color={theme.colors.primary} />,
+              strings.interfaceLanguage,
+              `${currentLangOption?.flag} ${currentLangOption?.name}`,
+              showLanguageModal
+            )}
           </View>
-        </View>
-      </Modal>
+
+          {/* Section Données */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>💾 {strings.dataManagement}</Text>
+            
+            {storageInfo && renderSettingItem(
+              <Database size={20} color={theme.colors.primary} />,
+              strings.storageUsed,
+              `${storageInfo.projectsCount} projets • ${storageInfo.totalShutters} volets • ${storageInfo.storageSize}`
+            )}
+
+            {renderSettingItem(
+              <Download size={20} color={theme.colors.success} />,
+              strings.exportMyData,
+              'Créer un rapport professionnel',
+              handleExportData
+            )}
+
+            {renderSettingItem(
+              <Trash2 size={20} color={theme.colors.error} />,
+              strings.clearAllData,
+              strings.clearAllDataDesc,
+              handleClearAllData,
+              undefined,
+              true
+            )}
+          </View>
+
+          {/* Section Application */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>ℹ️ {strings.applicationSection}</Text>
+            
+            {renderSettingItem(
+              <Info size={20} color={theme.colors.primary} />,
+              strings.about,
+              'Version, développeur, conformité',
+              handleAbout
+            )}
+          </View>
+        </ScrollView>
+      </View>
+
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+// Composant modal pour le thème
+function ThemeModal({ currentTheme, onThemeSelect }: { currentTheme: ThemeMode; onThemeSelect: (mode: ThemeMode) => void }) {
+  const { theme } = useTheme();
+  const { hideModal } = useModal();
+  const styles = createStyles(theme);
+
+  const getThemeIcon = (mode: ThemeMode) => {
+    switch (mode) {
+      case 'light':
+        return <Sun size={16} color={theme.colors.primary} />;
+      case 'dark':
+        return <Moon size={16} color={theme.colors.primary} />;
+      case 'auto':
+        return <Smartphone size={16} color={theme.colors.primary} />;
+    }
+  };
+
+  const getThemeName = (mode: ThemeMode) => {
+    switch (mode) {
+      case 'light':
+        return 'Mode clair';
+      case 'dark':
+        return 'Mode sombre';
+      case 'auto':
+        return 'Mode automatique';
+    }
+  };
+
+  const handleSelect = (mode: ThemeMode) => {
+    onThemeSelect(mode);
+    hideModal();
+  };
+
+  return (
+    <View style={styles.themeModalContent}>
+      <View style={styles.modalHeader}>
+        <Moon size={32} color={theme.colors.primary} />
+        <Text style={styles.modalTitle}>Choisir le thème</Text>
+        <TouchableOpacity 
+          onPress={hideModal}
+          style={styles.closeButton}
+        >
+          <X size={20} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
+      
+      <View style={styles.themeList}>
+        {(['light', 'dark', 'auto'] as ThemeMode[]).map((mode) => (
+          <TouchableOpacity
+            key={mode}
+            style={[
+              styles.themeOption,
+              currentTheme === mode && styles.themeOptionSelected
+            ]}
+            onPress={() => handleSelect(mode)}
+          >
+            {getThemeIcon(mode)}
+            <View style={styles.themeOptionContent}>
+              <Text style={[
+                styles.themeOptionTitle,
+                currentTheme === mode && styles.themeOptionTitleSelected
+              ]}>
+                {getThemeName(mode)}
+              </Text>
+              <Text style={styles.themeOptionDescription}>
+                {mode === 'light' && <Text>Interface claire et lumineuse</Text>}
+                {mode === 'dark' && <Text>Interface sombre et moderne</Text>}
+                {mode === 'auto' && <Text>S'adapte au mode système</Text>}
+              </Text>
+            </View>
+            {currentTheme === mode && (
+              <CheckCircle size={20} color={theme.colors.primary} />
+            )}
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+// Composant modal pour la langue
+function LanguageModal({ currentLanguage, onLanguageSelect }: { currentLanguage: SupportedLanguage; onLanguageSelect: (lang: SupportedLanguage) => void }) {
+  const { strings } = useLanguage();
+  const { theme } = useTheme();
+  const { hideModal } = useModal();
+  const styles = createStyles(theme);
+
+  const handleSelect = (languageCode: SupportedLanguage) => {
+    onLanguageSelect(languageCode);
+    hideModal();
+  };
+
+  return (
+    <View style={styles.languageModalContent}>
+      <View style={styles.modalHeader}>
+        <Globe size={32} color={theme.colors.primary} />
+        <Text style={styles.modalTitle}>{strings.selectLanguage}</Text>
+        <TouchableOpacity 
+          onPress={hideModal}
+          style={styles.closeButton}
+        >
+          <X size={20} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
+      
+      <View style={styles.translationNote}>
+        <Text style={styles.translationNoteTitle}>{strings.approximateTranslations}</Text>
+        <Text style={styles.translationNoteText}>
+          {strings.translationNote}
+        </Text>
+      </View>
+      
+      <View style={styles.languageList}>
+        {getLanguageOptions().map((option) => (
+          <TouchableOpacity
+            key={option.code}
+            style={[
+              styles.languageOption,
+              currentLanguage === option.code && styles.languageOptionSelected
+            ]}
+            onPress={() => handleSelect(option.code)}
+          >
+            <Text style={styles.languageFlag}>{option.flag}</Text>
+            <Text style={[
+              styles.languageName,
+              currentLanguage === option.code && styles.languageNameSelected
+            ]}>
+              {option.name}
+            </Text>
+            {currentLanguage === option.code && (
+              <CheckCircle size={20} color={theme.colors.primary} />
+            )}
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+// Composant modal pour la confirmation de suppression
+function ClearDataModal({ onConfirm, onCancel }: { onConfirm: () => Promise<void>; onCancel: () => void }) {
+  const { strings } = useLanguage();
+  const { theme } = useTheme();
+  const styles = createStyles(theme);
+
+  const handleConfirm = async () => {
+    await onConfirm();
+    onCancel();
+  };
+
+  return (
+    <View style={styles.modalContent}>
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle}>{strings.clearAllDataConfirm}</Text>
+      </View>
+      
+      <Text style={styles.modalText}>
+        <Text>⚠️ </Text>
+        <Text style={styles.modalBold}>{strings.clearAllDataWarning}</Text>
+        <Text>{'\n\n'}</Text>
+        <Text>Tous vos projets, bâtiments, zones et volets seront définitivement supprimés.</Text>
+        <Text>{'\n\n'}</Text>
+        <Text>Assurez-vous d'avoir exporté vos données importantes avant de continuer.</Text>
+      </Text>
+
+      <View style={styles.modalFooter}>
+        <Button
+          title={strings.cancel}
+          onPress={onCancel}
+          variant="secondary"
+          style={styles.modalButton}
+        />
+        <Button
+          title={<Text>Supprimer tout</Text>}
+          onPress={handleConfirm}
+          variant="danger"
+          style={styles.modalButton}
+        />
+      </View>
+    </View>
+  );
+}
+
+const createStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.background,
   },
   content: {
     flex: 1,
@@ -314,14 +463,14 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontFamily: 'Inter-SemiBold',
-    color: '#111827',
+    color: theme.colors.text,
     marginBottom: 16,
   },
   settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 8,
@@ -333,7 +482,7 @@ const styles = StyleSheet.create({
   },
   settingItemDanger: {
     borderLeftWidth: 4,
-    borderLeftColor: '#EF4444',
+    borderLeftColor: theme.colors.error,
   },
   settingItemLeft: {
     flexDirection: 'row',
@@ -344,13 +493,13 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 10,
-    backgroundColor: '#F0FDFA',
+    backgroundColor: theme.colors.primary + '20',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
   },
   iconContainerDanger: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: theme.colors.error + '20',
   },
   settingTextContainer: {
     flex: 1,
@@ -358,39 +507,43 @@ const styles = StyleSheet.create({
   settingTitle: {
     fontSize: 16,
     fontFamily: 'Inter-Medium',
-    color: '#111827',
+    color: theme.colors.text,
   },
   settingTitleDanger: {
-    color: '#EF4444',
+    color: theme.colors.error,
   },
   settingSubtitle: {
     fontSize: 14,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
     marginTop: 2,
   },
   modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
+    // Supprimé car maintenant géré par le ModalProvider
   },
   modalContent: {
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.surface,
     borderRadius: 16,
-    padding: 24,
+    padding: 20,
     width: '100%',
     maxWidth: 400,
-    maxHeight: '80%',
+    maxHeight: '70%',
   },
-  languageModalContent: {
-    backgroundColor: '#ffffff',
+  themeModalContent: {
+    backgroundColor: theme.colors.surface,
     borderRadius: 16,
-    padding: 24,
+    padding: 20,
     width: '100%',
     maxWidth: 450,
-    maxHeight: '85%',
+    maxHeight: '60%',
+  },
+  languageModalContent: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: 16,
+    padding: 20,
+    width: '100%',
+    maxWidth: 450,
+    maxHeight: '75%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -401,7 +554,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontFamily: 'Inter-SemiBold',
-    color: '#111827',
+    color: theme.colors.text,
     flex: 1,
     marginLeft: 12,
   },
@@ -411,13 +564,13 @@ const styles = StyleSheet.create({
   modalText: {
     fontSize: 14,
     fontFamily: 'Inter-Regular',
-    color: '#374151',
+    color: theme.colors.textSecondary,
     lineHeight: 20,
     marginBottom: 20,
   },
   modalBold: {
     fontFamily: 'Inter-SemiBold',
-    color: '#111827',
+    color: theme.colors.text,
   },
   modalFooter: {
     flexDirection: 'row',
@@ -426,24 +579,60 @@ const styles = StyleSheet.create({
   modalButton: {
     flex: 1,
   },
+  themeList: {
+    marginBottom: 20,
+  },
+  themeOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginBottom: 8,
+    backgroundColor: theme.colors.surfaceSecondary,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  themeOptionSelected: {
+    backgroundColor: theme.colors.primary + '20',
+    borderColor: theme.colors.primary,
+  },
+  themeOptionContent: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  themeOptionTitle: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: theme.colors.text,
+    marginBottom: 4,
+  },
+  themeOptionTitleSelected: {
+    color: theme.colors.primary,
+  },
+  themeOptionDescription: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: theme.colors.textSecondary,
+  },
   translationNote: {
-    backgroundColor: '#FEF3C7',
+    backgroundColor: theme.colors.warning + '20',
     borderRadius: 8,
     padding: 12,
     marginBottom: 16,
     borderLeftWidth: 3,
-    borderLeftColor: '#F59E0B',
+    borderLeftColor: theme.colors.warning,
   },
   translationNoteTitle: {
     fontSize: 14,
     fontFamily: 'Inter-SemiBold',
-    color: '#92400E',
+    color: theme.colors.warning,
     marginBottom: 4,
   },
   translationNoteText: {
     fontSize: 12,
     fontFamily: 'Inter-Regular',
-    color: '#92400E',
+    color: theme.colors.warning,
     lineHeight: 16,
   },
   languageList: {
@@ -456,12 +645,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 8,
     marginBottom: 8,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.surfaceSecondary,
   },
   languageOptionSelected: {
-    backgroundColor: '#F0FDFA',
+    backgroundColor: theme.colors.primary + '20',
     borderWidth: 1,
-    borderColor: '#009999',
+    borderColor: theme.colors.primary,
   },
   languageFlag: {
     fontSize: 24,
@@ -470,11 +659,11 @@ const styles = StyleSheet.create({
   languageName: {
     fontSize: 16,
     fontFamily: 'Inter-Medium',
-    color: '#374151',
+    color: theme.colors.textSecondary,
     flex: 1,
   },
   languageNameSelected: {
-    color: '#009999',
+    color: theme.colors.primary,
     fontFamily: 'Inter-SemiBold',
   },
 });

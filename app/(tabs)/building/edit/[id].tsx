@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, useColorScheme } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Header } from '@/components/Header';
 import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
 import { Project, Building } from '@/types';
-import { storage } from '@/utils/storage';
+import { useStorage } from '@/contexts/StorageContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useAndroidBackButton } from '@/utils/BackHandler';
 
 export default function EditBuildingScreen() {
   const { strings } = useLanguage();
+  const { theme } = useTheme();
+  const { projects, updateBuilding } = useStorage();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [building, setBuilding] = useState<Building | null>(null);
   const [project, setProject] = useState<Project | null>(null);
@@ -19,27 +23,31 @@ export default function EditBuildingScreen() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [errors, setErrors] = useState<{ name?: string }>({});
 
-  // NOUVEAU : Détecter le thème système
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  // Configure Android back button to go back to the building screen
+  useAndroidBackButton(() => {
+    handleBack();
+    return true;
+  });
 
   useEffect(() => {
     loadBuilding();
-  }, [id]);
+  }, [id, projects]);
 
   const loadBuilding = async () => {
     try {
-      const projects = await storage.getProjects();
+      console.log('🔍 Recherche du bâtiment avec ID:', id);
       for (const proj of projects) {
         const foundBuilding = proj.buildings.find(b => b.id === id);
         if (foundBuilding) {
+          console.log('✅ Bâtiment trouvé:', foundBuilding.name);
           setBuilding(foundBuilding);
           setProject(proj);
           setName(foundBuilding.name);
           setDescription(foundBuilding.description || '');
-          break;
+          return;
         }
       }
+      console.error('❌ Bâtiment non trouvé avec ID:', id);
     } catch (error) {
       console.error('Erreur lors du chargement du bâtiment:', error);
     } finally {
@@ -47,10 +55,12 @@ export default function EditBuildingScreen() {
     }
   };
 
-  // CORRIGÉ : Retourner vers la page du projet (d'où on vient)
+  // CORRIGÉ : Retourner vers la page du bâtiment (et non du projet)
   const handleBack = () => {
     try {
-      if (project) {
+      if (building) {
+        router.push(`/(tabs)/building/${building.id}`);
+      } else if (project) {
         router.push(`/(tabs)/project/${project.id}`);
       } else {
         router.push('/(tabs)/');
@@ -77,18 +87,19 @@ export default function EditBuildingScreen() {
 
     setLoading(true);
     try {
-      const updatedBuilding = await storage.updateBuilding(building.id, {
+      console.log('💾 Sauvegarde du bâtiment:', building.id);
+      
+      const updatedBuilding = await updateBuilding(building.id, {
         name: name.trim(),
         description: description.trim() || undefined,
       });
 
       if (updatedBuilding) {
-        // CORRIGÉ : Retourner vers la page du projet (d'où on vient)
-        if (project) {
-          router.push(`/(tabs)/project/${project.id}`);
-        } else {
-          router.push('/(tabs)/');
-        }
+        console.log('✅ Bâtiment mis à jour avec succès');
+        // CORRIGÉ : Retourner vers la page du bâtiment (et non du projet)
+        router.push(`/(tabs)/building/${building.id}`);
+      } else {
+        console.error('❌ Erreur: Bâtiment non trouvé pour la mise à jour');
       }
     } catch (error) {
       console.error('Erreur lors de la modification du bâtiment:', error);
@@ -96,6 +107,8 @@ export default function EditBuildingScreen() {
       setLoading(false);
     }
   };
+
+  const styles = createStyles(theme);
 
   if (initialLoading) {
     return (
@@ -147,7 +160,7 @@ export default function EditBuildingScreen() {
         />
 
         <Input
-          label={`${strings.description} (${strings.optional})`}
+          label={`Description (${strings.optional})`}
           value={description}
           onChangeText={setDescription}
           placeholder="Ex: Bâtiment principal, 5 étages"
@@ -157,7 +170,7 @@ export default function EditBuildingScreen() {
 
         <View style={styles.buttonContainer}>
           <Button
-            title={strings.saveChanges}
+            title={loading ? "Sauvegarde..." : strings.saveChanges}
             onPress={handleSave}
             disabled={loading}
           />
@@ -167,10 +180,10 @@ export default function EditBuildingScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.background,
   },
   content: {
     flex: 1,
@@ -187,7 +200,7 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
   },
   errorContainer: {
     flex: 1,
@@ -198,7 +211,7 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
     textAlign: 'center',
   },
   buttonContainer: {

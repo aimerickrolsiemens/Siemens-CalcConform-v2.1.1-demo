@@ -1,16 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, useColorScheme } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Header } from '@/components/Header';
 import { Input } from '@/components/Input';
 import { DateInput } from '@/components/DateInput';
 import { Button } from '@/components/Button';
 import { Project } from '@/types';
-import { storage } from '@/utils/storage';
+import { useStorage } from '@/contexts/StorageContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useAndroidBackButton } from '@/utils/BackHandler';
 
 export default function EditProjectScreen() {
   const { strings } = useLanguage();
+  const { theme } = useTheme();
+  const { projects, updateProject } = useStorage();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [project, setProject] = useState<Project | null>(null);
   const [name, setName] = useState('');
@@ -21,13 +25,15 @@ export default function EditProjectScreen() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [errors, setErrors] = useState<{ name?: string; startDate?: string; endDate?: string }>({});
 
-  // NOUVEAU : Détecter le thème système
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  // Configure Android back button to go back to the project screen
+  useAndroidBackButton(() => {
+    handleBack();
+    return true;
+  });
 
   useEffect(() => {
     loadProject();
-  }, [id]);
+  }, [id, projects]);
 
   const formatDate = (date: Date): string => {
     const day = date.getDate().toString().padStart(2, '0');
@@ -38,14 +44,17 @@ export default function EditProjectScreen() {
 
   const loadProject = async () => {
     try {
-      const projects = await storage.getProjects();
+      console.log('🔍 Recherche du projet avec ID:', id);
       const foundProject = projects.find(p => p.id === id);
       if (foundProject) {
+        console.log('✅ Projet trouvé:', foundProject.name);
         setProject(foundProject);
         setName(foundProject.name);
         setCity(foundProject.city || '');
         setStartDate(foundProject.startDate ? formatDate(new Date(foundProject.startDate)) : '');
         setEndDate(foundProject.endDate ? formatDate(new Date(foundProject.endDate)) : '');
+      } else {
+        console.error('❌ Projet non trouvé avec ID:', id);
       }
     } catch (error) {
       console.error('Erreur lors du chargement du projet:', error);
@@ -54,11 +63,14 @@ export default function EditProjectScreen() {
     }
   };
 
-  // CORRIGÉ : Retourner vers la page d'accueil des projets (d'où on vient)
+  // CORRIGÉ : Retourner vers la page du projet (et non la liste des projets)
   const handleBack = () => {
     try {
-      // Navigation forcée vers la page d'accueil des projets
-      router.push('/(tabs)/');
+      if (project) {
+        router.push(`/(tabs)/project/${project.id}`);
+      } else {
+        router.push('/(tabs)/');
+      }
     } catch (error) {
       console.error('Erreur de navigation:', error);
       router.push('/(tabs)/');
@@ -72,7 +84,6 @@ export default function EditProjectScreen() {
       newErrors.name = strings.nameRequired;
     }
 
-    // Validation des dates si elles sont renseignées
     if (startDate && !isValidDate(startDate)) {
       newErrors.startDate = strings.invalidDate;
     }
@@ -81,7 +92,6 @@ export default function EditProjectScreen() {
       newErrors.endDate = strings.invalidDate;
     }
 
-    // Vérifier que la date de fin est après la date de début
     if (startDate && endDate && isValidDate(startDate) && isValidDate(endDate)) {
       const start = parseDate(startDate);
       const end = parseDate(endDate);
@@ -119,6 +129,8 @@ export default function EditProjectScreen() {
 
     setLoading(true);
     try {
+      console.log('💾 Sauvegarde du projet:', project.id);
+      
       const updateData: any = {
         name: name.trim(),
         city: city.trim() || undefined,
@@ -136,11 +148,14 @@ export default function EditProjectScreen() {
         updateData.endDate = undefined;
       }
 
-      const updatedProject = await storage.updateProject(project.id, updateData);
+      const updatedProject = await updateProject(project.id, updateData);
 
       if (updatedProject) {
-        // CORRIGÉ : Retourner vers la page d'accueil des projets (d'où on vient)
-        router.push('/(tabs)/');
+        console.log('✅ Projet mis à jour avec succès');
+        // CORRIGÉ : Retourner vers la page du projet (et non la liste des projets)
+        router.push(`/(tabs)/project/${project.id}`);
+      } else {
+        console.error('❌ Erreur: Projet non trouvé pour la mise à jour');
       }
     } catch (error) {
       console.error('Erreur lors de la modification du projet:', error);
@@ -148,6 +163,8 @@ export default function EditProjectScreen() {
       setLoading(false);
     }
   };
+
+  const styles = createStyles(theme);
 
   if (initialLoading) {
     return (
@@ -220,7 +237,7 @@ export default function EditProjectScreen() {
 
         <View style={styles.buttonContainer}>
           <Button
-            title={strings.saveChanges}
+            title={loading ? "Sauvegarde..." : strings.saveChanges}
             onPress={handleSave}
             disabled={loading}
           />
@@ -230,10 +247,10 @@ export default function EditProjectScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.background,
   },
   content: {
     flex: 1,
@@ -250,7 +267,7 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
   },
   errorContainer: {
     flex: 1,
@@ -261,7 +278,7 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
     textAlign: 'center',
   },
   buttonContainer: {

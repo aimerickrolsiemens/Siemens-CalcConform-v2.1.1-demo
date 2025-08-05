@@ -1,42 +1,38 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert, Linking, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking, Platform, Clipboard } from 'react-native';
 import { Info, ChevronRight, Shield, Smartphone, CircleCheck as CheckCircle, FileText, Calculator, Sparkles, X } from 'lucide-react-native';
 import { Header } from '@/components/Header';
 import { Button } from '@/components/Button';
 import * as WebBrowser from 'expo-web-browser';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useModal } from '@/contexts/ModalContext';
 
 export default function AboutScreen() {
   const { strings } = useLanguage();
-  const [versionModalVisible, setVersionModalVisible] = useState(false);
-  const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
-  const [calculationsModalVisible, setCalculationsModalVisible] = useState(false);
-  const [upcomingFeaturesModalVisible, setUpcomingFeaturesModalVisible] = useState(false);
+  const { theme } = useTheme();
+  const { showModal } = useModal();
 
-  const appVersion = "1.0.3";
+  const appVersion = "2.0.0";
 
   const handleVersionPress = () => {
-    setVersionModalVisible(true);
+    showModal(<VersionModal appVersion={appVersion} />);
   };
 
   const handlePrivacyPress = () => {
-    setPrivacyModalVisible(true);
+    showModal(<PrivacyModal />);
   };
 
   const handleCalculationsPress = () => {
-    setCalculationsModalVisible(true);
+    showModal(<CalculationsModal />);
   };
 
   const handleUpcomingFeaturesPress = () => {
-    setUpcomingFeaturesModalVisible(true);
+    showModal(<UpcomingFeaturesModal />);
   };
 
   const handleContactPress = () => {
-    Alert.alert(
-      strings.contact,
-      strings.contactDeveloperMessage,
-      [{ text: strings.ok }]
-    );
+    showModal(<ContactDeveloperModal />);
   };
 
   const handleOpenPDF = async () => {
@@ -48,7 +44,7 @@ export default function AboutScreen() {
       } else {
         const result = await WebBrowser.openBrowserAsync(pdfUrl);
         
-        if (result.type === 'cancel' || result.type === 'dismiss') {
+        if (result.type === 'cancel' || result.type === 'dismiss')  {
           console.log('Navigateur fermé');
         }
       }
@@ -78,492 +74,424 @@ export default function AboutScreen() {
         </View>
       </View>
       {onPress && (
-        <ChevronRight size={20} color="#9CA3AF" />
+        <ChevronRight size={20} color={theme.colors.textTertiary} />
       )}
     </TouchableOpacity>
   );
+
+  const styles = createStyles(theme);
 
   return (
     <View style={styles.container}>
       <Header title={strings.aboutTitle} subtitle={strings.aboutSubtitle} />
       
-      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-        {/* En-tête de l'application */}
-        <View style={styles.appHeader}>
-          <View style={styles.appIconContainer}>
-            <Info size={48} color="#009999" />
-          </View>
-          <Text style={styles.appTitle}>
-            {strings.appDescription}
-          </Text>
-          <Text style={styles.developer}>{strings.developedBy}</Text>
-          <Text style={styles.copyright}>{strings.copyright}</Text>
-        </View>
-
-        {/* Informations de l'application */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{strings.application}</Text>
-          
-          {renderInfoItem(
-            <Smartphone size={20} color="#009999" />,
-            strings.version,
-            `${strings.version} ${appVersion}`,
-            handleVersionPress
-          )}
-
-          {renderInfoItem(
-            <Shield size={20} color="#009999" />,
-            strings.privacy,
-            strings.dataProtection,
-            handlePrivacyPress
-          )}
-        </View>
-
-        {/* Informations techniques */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{strings.compliance}</Text>
-          
-          {renderInfoItem(
-            <FileText size={20} color="#009999" />,
-            'NF S61-933 Annexe H',
-            strings.consultDocument,
-            handleOpenPDF
-          )}
-
-          {renderInfoItem(
-            <Calculator size={20} color="#10B981" />,
-            strings.complianceCalculations,
-            'Formules et algorithmes utilisés',
-            handleCalculationsPress
-          )}
-        </View>
-
-        {/* Section Prochaines nouveautés */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🚀 Développement</Text>
-          
-          {renderInfoItem(
-            <Sparkles size={20} color="#F59E0B" />,
-            'Prochaines nouveautés',
-            'Découvrez les fonctionnalités à venir',
-            handleUpcomingFeaturesPress
-          )}
-        </View>
-
-        {/* Contact */}
-        <View style={styles.section}>
-          <Button
-            title={strings.contactDeveloper}
-            onPress={handleContactPress}
-            variant="secondary"
-          />
-        </View>
-      </ScrollView>
-
-      {/* Modal Version */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={versionModalVisible}
-        onRequestClose={() => setVersionModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <CheckCircle size={32} color="#10B981" />
-              <Text style={styles.modalTitle}>{strings.appUpToDate}</Text>
+      <View style={{ flex: 1 }}>
+        <ScrollView 
+          style={styles.content} 
+          contentContainerStyle={[
+            styles.contentContainer,
+            Platform.OS === 'web' && styles.contentContainerWeb
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* En-tête de l'application */}
+          <View style={styles.appHeader}>
+            <View style={styles.appIconContainer}>
+              <Info size={48} color={theme.colors.primary} />
             </View>
-            <Text style={styles.modalText}>
-              {strings.appUpToDate}.{'\n'}
-              {strings.currentVersion} : {appVersion}
+            <Text style={styles.appTitle}>
+              Siemens CalcConform
             </Text>
+            <Text style={styles.developer}>{strings.developedBy}</Text>
+            <Text style={styles.copyright}>{strings.copyright}</Text>
+          </View>
+
+          {/* Informations de l'application */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{strings.application}</Text>
+            
+            {renderInfoItem(
+              <Smartphone size={20} color={theme.colors.primary} />,
+              strings.version,
+              `${strings.version} ${appVersion}`,
+              handleVersionPress
+            )}
+
+            {renderInfoItem(
+              <Shield size={20} color={theme.colors.primary} />,
+              strings.privacy,
+              strings.dataProtection,
+              handlePrivacyPress
+            )}
+          </View>
+
+          {/* Informations techniques */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{strings.compliance}</Text>
+            
+            {renderInfoItem(
+              <FileText size={20} color={theme.colors.primary} />,
+              'NF S61-933 Annexe H',
+              strings.consultDocument,
+              handleOpenPDF
+            )}
+
+            {renderInfoItem(
+              <Calculator size={20} color={theme.colors.success} />,
+              strings.complianceCalculations,
+              'Formules et algorithmes utilisés',
+              handleCalculationsPress
+            )}
+          </View>
+
+          {/* Contact */}
+          <View style={styles.section}>
             <Button
-              title={strings.ok}
-              onPress={() => setVersionModalVisible(false)}
-              style={styles.modalButton}
+              title={strings.contactDeveloper}
+              onPress={handleContactPress}
+              variant="secondary"
             />
           </View>
-        </View>
-      </Modal>
-
-      {/* Modal Confidentialité */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={privacyModalVisible}
-        onRequestClose={() => setPrivacyModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Shield size={32} color="#009999" />
-              <Text style={styles.modalTitle}>{strings.privacyTitle}</Text>
-            </View>
-            <ScrollView style={styles.modalScrollView}>
-              <Text style={styles.modalText}>
-                <Text style={styles.modalBold}>{strings.unofficialApp}{'\n'}</Text>
-                {strings.unofficialAppDesc}
-                {'\n\n'}
-                <Text style={styles.modalBold}>{strings.dataProtectionTitle}{'\n'}</Text>
-                {strings.dataProtectionDesc}
-                {'\n\n'}
-                <Text style={styles.modalBold}>{strings.localStorageTitle}{'\n'}</Text>
-                {strings.localStorageDesc}
-              </Text>
-            </ScrollView>
-            <Button
-              title={strings.understood}
-              onPress={() => setPrivacyModalVisible(false)}
-              style={styles.modalButton}
-            />
-          </View>
-        </View>
-      </Modal>
-
-      {/* Modal Calculs de conformité - SANS BARRE DE SCROLL */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={calculationsModalVisible}
-        onRequestClose={() => setCalculationsModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.calculationsModalContent}>
-            <View style={styles.modalHeader}>
-              <Calculator size={32} color="#10B981" />
-              <Text style={styles.modalTitle}>Calculs de conformité</Text>
-              <TouchableOpacity 
-                onPress={() => setCalculationsModalVisible(false)}
-                style={styles.closeButton}
-              >
-                <X size={20} color="#6B7280" />
-              </TouchableOpacity>
-            </View>
-            
-            <ScrollView 
-              style={styles.calculationsScrollView} 
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.calculationsScrollContent}
-            >
-              {/* Formule principale */}
-              <View style={styles.calculationSection}>
-                <Text style={styles.calculationTitle}>📐 Formule de calcul de l'écart</Text>
-                <View style={styles.formulaContainer}>
-                  <Text style={styles.formulaText}>
-                    Écart (%) = ((Débit mesuré - Débit de référence) / Débit de référence) × 100
-                  </Text>
-                </View>
-                <Text style={styles.calculationDescription}>
-                  Cette formule calcule l'écart relatif entre la valeur mesurée et la valeur de référence, exprimé en pourcentage.
-                </Text>
-              </View>
-
-              {/* Critères de conformité */}
-              <View style={styles.calculationSection}>
-                <Text style={styles.calculationTitle}>⚖️ Critères de conformité NF S61-933 Annexe H</Text>
-                
-                <View style={styles.criteriaContainer}>
-                  <View style={styles.criteriaItem}>
-                    <View style={[styles.criteriaIndicator, { backgroundColor: '#10B981' }]} />
-                    <View style={styles.criteriaContent}>
-                      <Text style={styles.criteriaLabel}>Fonctionnel (|Écart| ≤ 10%)</Text>
-                      <Text style={styles.criteriaDescription}>
-                        Un écart inférieur à ±10% entre les valeurs retenues lors de l'essai fonctionnel et les valeurs de référence conduit au constat du fonctionnement attendu du système de désenfumage mécanique.
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.criteriaItem}>
-                    <View style={[styles.criteriaIndicator, { backgroundColor: '#F59E0B' }]} />
-                    <View style={styles.criteriaContent}>
-                      <Text style={styles.criteriaLabel}>Acceptable (10% &lt; |Écart| ≤ 20%)</Text>
-                      <Text style={styles.criteriaDescription}>
-                        Un écart compris entre ±10% et ±20% conduit à signaler cette dérive, par une proposition d'action corrective à l'exploitant ou au chef d'établissement.
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.criteriaItem}>
-                    <View style={[styles.criteriaIndicator, { backgroundColor: '#EF4444' }]} />
-                    <View style={styles.criteriaContent}>
-                      <Text style={styles.criteriaLabel}>Non conforme (|Écart| &gt; 20%)</Text>
-                      <Text style={styles.criteriaDescription}>
-                        Un écart supérieur à ±20% doit conduire à une action corrective obligatoire, la valeur étant jugée non conforme à la mise en service.
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              </View>
-
-              {/* Exemples de calcul */}
-              <View style={styles.calculationSection}>
-                <Text style={styles.calculationTitle}>🧮 Exemples de calcul</Text>
-                
-                <View style={styles.exampleContainer}>
-                  <Text style={styles.exampleTitle}>Exemple 1 : Volet fonctionnel</Text>
-                  <Text style={styles.exampleData}>
-                    • Débit de référence : 5000 m³/h{'\n'}
-                    • Débit mesuré : 4900 m³/h
-                  </Text>
-                  <Text style={styles.exampleCalculation}>
-                    Écart = ((4900 - 5000) / 5000) × 100 = -2%
-                  </Text>
-                  <Text style={styles.exampleResult}>
-                    ✅ Résultat : <Text style={{ color: '#10B981', fontWeight: 'bold' }}>Fonctionnel</Text> (|2%| ≤ 10%)
-                  </Text>
-                </View>
-
-                <View style={styles.exampleContainer}>
-                  <Text style={styles.exampleTitle}>Exemple 2 : Volet acceptable</Text>
-                  <Text style={styles.exampleData}>
-                    • Débit de référence : 3000 m³/h{'\n'}
-                    • Débit mesuré : 3450 m³/h
-                  </Text>
-                  <Text style={styles.exampleCalculation}>
-                    Écart = ((3450 - 3000) / 3000) × 100 = +15%
-                  </Text>
-                  <Text style={styles.exampleResult}>
-                    ⚠️ Résultat : <Text style={{ color: '#F59E0B', fontWeight: 'bold' }}>Acceptable</Text> (10% &lt; |15%| ≤ 20%)
-                  </Text>
-                </View>
-
-                <View style={styles.exampleContainer}>
-                  <Text style={styles.exampleTitle}>Exemple 3 : Volet non conforme</Text>
-                  <Text style={styles.exampleData}>
-                    • Débit de référence : 4000 m³/h{'\n'}
-                    • Débit mesuré : 3000 m³/h
-                  </Text>
-                  <Text style={styles.exampleCalculation}>
-                    Écart = ((3000 - 4000) / 4000) × 100 = -25%
-                  </Text>
-                  <Text style={styles.exampleResult}>
-                    ❌ Résultat : <Text style={{ color: '#EF4444', fontWeight: 'bold' }}>Non conforme</Text> (|25%| &gt; 20%)
-                  </Text>
-                </View>
-              </View>
-
-              {/* Algorithme de validation */}
-              <View style={styles.calculationSection}>
-                <Text style={styles.calculationTitle}>🔧 Algorithme de validation</Text>
-                <View style={styles.algorithmContainer}>
-                  <Text style={styles.algorithmStep}>1. Vérification des données d'entrée</Text>
-                  <Text style={styles.algorithmDetail}>   • Débit de référence &gt; 0</Text>
-                  <Text style={styles.algorithmDetail}>   • Débit mesuré ≥ 0</Text>
-                  
-                  <Text style={styles.algorithmStep}>2. Calcul de l'écart relatif</Text>
-                  <Text style={styles.algorithmDetail}>   • Écart = ((Mesuré - Référence) / Référence) × 100</Text>
-                  
-                  <Text style={styles.algorithmStep}>3. Détermination du statut</Text>
-                  <Text style={styles.algorithmDetail}>   • Si |Écart| ≤ 10% → Fonctionnel</Text>
-                  <Text style={styles.algorithmDetail}>   • Si 10% &lt; |Écart| ≤ 20% → Acceptable</Text>
-                  <Text style={styles.algorithmDetail}>   • Si |Écart| &gt; 20% → Non conforme</Text>
-                </View>
-              </View>
-
-              {/* Note technique */}
-              <View style={styles.technicalNote}>
-                <Text style={styles.technicalNoteTitle}>📋 Note technique</Text>
-                <Text style={styles.technicalNoteText}>
-                  Les calculs sont effectués en temps réel lors de la saisie des données. L'application utilise la précision JavaScript standard (IEEE 754) et arrondit les résultats à une décimale pour l'affichage.
-                  {'\n\n'}
-                  La conformité est évaluée selon les critères officiels de la norme française NF S61-933 Annexe H, version en vigueur.
-                </Text>
-              </View>
-            </ScrollView>
-
-            <View style={styles.modalFooter}>
-              <Button
-                title={strings.understood}
-                onPress={() => setCalculationsModalVisible(false)}
-                style={styles.modalButton}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Modal Prochaines nouveautés - SANS BARRE DE SCROLL */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={upcomingFeaturesModalVisible}
-        onRequestClose={() => setUpcomingFeaturesModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.upcomingFeaturesModalContent}>
-            <View style={styles.modalHeader}>
-              <Sparkles size={32} color="#F59E0B" />
-              <Text style={styles.modalTitle}>Prochaines nouveautés</Text>
-              <TouchableOpacity 
-                onPress={() => setUpcomingFeaturesModalVisible(false)}
-                style={styles.closeButton}
-              >
-                <X size={20} color="#6B7280" />
-              </TouchableOpacity>
-            </View>
-            
-            <ScrollView 
-              style={styles.upcomingScrollView} 
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.upcomingScrollContent}
-            >
-              {/* Introduction */}
-              <View style={styles.upcomingIntro}>
-                <Text style={styles.upcomingIntroText}>
-                  Découvrez les futures fonctionnalités qui arriveront dans l'application Siemens Smoke Extraction Calculator.
-                </Text>
-              </View>
-
-              {/* Fonctionnalités principales */}
-              <View style={styles.featureSection}>
-                <Text style={styles.featureSectionTitle}>🎯 Fonctionnalités principales</Text>
-                
-                <View style={styles.featureItem}>
-                  <Text style={styles.featureIcon}>📊</Text>
-                  <View style={styles.featureContent}>
-                    <Text style={styles.featureTitle}>Tableaux de bord avancés</Text>
-                    <Text style={styles.featureDescription}>
-                      Visualisations graphiques interactives avec statistiques en temps réel, graphiques de tendances et indicateurs de performance.
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.featureItem}>
-                  <Text style={styles.featureIcon}>📱</Text>
-                  <View style={styles.featureContent}>
-                    <Text style={styles.featureTitle}>Interface optimisée</Text>
-                    <Text style={styles.featureDescription}>
-                      Amélioration de l'ergonomie avec navigation simplifiée, raccourcis clavier et gestes tactiles avancés.
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.featureItem}>
-                  <Text style={styles.featureIcon}>🔄</Text>
-                  <View style={styles.featureContent}>
-                    <Text style={styles.featureTitle}>Sauvegarde automatique</Text>
-                    <Text style={styles.featureDescription}>
-                      Protection renforcée de vos données avec sauvegarde automatique locale et récupération en cas de fermeture inattendue.
-                    </Text>
-                  </View>
-                </View>
-              </View>
-
-              {/* Outils et fonctionnalités */}
-              <View style={styles.featureSection}>
-                <Text style={styles.featureSectionTitle}>🔧 Outils et fonctionnalités</Text>
-                
-                <View style={styles.featureItem}>
-                  <Text style={styles.featureIcon}>📷</Text>
-                  <View style={styles.featureContent}>
-                    <Text style={styles.featureTitle}>Capture photo intégrée</Text>
-                    <Text style={styles.featureDescription}>
-                      Ajout de photos directement aux volets avec annotations pour une documentation complète sur le terrain.
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.featureItem}>
-                  <Text style={styles.featureIcon}>🎙️</Text>
-                  <View style={styles.featureContent}>
-                    <Text style={styles.featureTitle}>Notes vocales</Text>
-                    <Text style={styles.featureDescription}>
-                      Enregistrement de remarques audio pour une saisie rapide sur le terrain, avec lecture directe dans l'application.
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.featureItem}>
-                  <Text style={styles.featureIcon}>📋</Text>
-                  <View style={styles.featureContent}>
-                    <Text style={styles.featureTitle}>Modèles de rapports</Text>
-                    <Text style={styles.featureDescription}>
-                      Bibliothèque de modèles personnalisables pour générer des rapports professionnels adaptés à vos besoins.
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.featureItem}>
-                  <Text style={styles.featureIcon}>📊</Text>
-                  <View style={styles.featureContent}>
-                    <Text style={styles.featureTitle}>Analyse statistique</Text>
-                    <Text style={styles.featureDescription}>
-                      Outils d'analyse avancés avec calculs de moyennes, écarts-types et tendances pour optimiser vos mesures.
-                    </Text>
-                  </View>
-                </View>
-              </View>
-
-              {/* Améliorations UX */}
-              <View style={styles.featureSection}>
-                <Text style={styles.featureSectionTitle}>✨ Expérience utilisateur</Text>
-                
-                <View style={styles.featureItem}>
-                  <Text style={styles.featureIcon}>🌙</Text>
-                  <View style={styles.featureContent}>
-                    <Text style={styles.featureTitle}>Mode sombre complet</Text>
-                    <Text style={styles.featureDescription}>
-                      Interface adaptée pour le travail de nuit avec réduction de la fatigue oculaire et économie de batterie.
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.featureItem}>
-                  <Text style={styles.featureIcon}>♿</Text>
-                  <View style={styles.featureContent}>
-                    <Text style={styles.featureTitle}>Accessibilité renforcée</Text>
-                    <Text style={styles.featureDescription}>
-                      Support complet des technologies d'assistance avec navigation vocale et adaptation pour tous les utilisateurs.
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.featureItem}>
-                  <Text style={styles.featureIcon}>⚡</Text>
-                  <View style={styles.featureContent}>
-                    <Text style={styles.featureTitle}>Performance optimisée</Text>
-                    <Text style={styles.featureDescription}>
-                      Temps de chargement réduits, animations fluides et gestion optimisée de la mémoire pour une expérience ultra-rapide.
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.featureItem}>
-                  <Text style={styles.featureIcon}>🔍</Text>
-                  <View style={styles.featureContent}>
-                    <Text style={styles.featureTitle}>Recherche avancée</Text>
-                    <Text style={styles.featureDescription}>
-                      Moteur de recherche amélioré avec filtres multiples, recherche par plage de valeurs et suggestions intelligentes.
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            </ScrollView>
-
-            <View style={styles.modalFooter}>
-              <Button
-                title="OK"
-                onPress={() => setUpcomingFeaturesModalVisible(false)}
-                style={styles.modalButton}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
+        </ScrollView>
+      </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+// Composants modaux séparés
+function VersionModal({ appVersion }: { appVersion: string }) {
+  const { strings } = useLanguage();
+  const { theme } = useTheme();
+  const { hideModal } = useModal();
+  const styles = createStyles(theme);
+
+  return (
+    <View style={styles.modalContent}>
+      <View style={styles.modalHeader}>
+        <CheckCircle size={32} color={theme.colors.success} />
+        <Text style={styles.modalTitle}>{strings.appUpToDate}</Text>
+      </View>
+      <Text style={styles.modalText}>
+        {strings.appUpToDate}.{'\n'}
+        {strings.currentVersion} : {appVersion}
+      </Text>
+      <Button
+        title={strings.ok}
+        onPress={hideModal}
+        style={styles.modalButton}
+      />
+    </View>
+  );
+}
+
+function PrivacyModal() {
+  const { strings } = useLanguage();
+  const { theme } = useTheme();
+  const { hideModal } = useModal();
+  const styles = createStyles(theme);
+
+  return (
+    <View style={styles.modalContent}>
+      <View style={styles.modalHeader}>
+        <Shield size={32} color={theme.colors.primary} />
+        <Text style={styles.modalTitle}>{strings.privacyTitle}</Text>
+        <TouchableOpacity 
+          onPress={hideModal}
+          style={styles.closeButton}
+        >
+          <X size={20} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
+      
+      <View style={styles.privacyContent}>
+        <View style={styles.privacyItem}>
+          <Text style={styles.privacyItemTitle}>🔒 {strings.dataProtectionTitle}</Text>
+          <Text style={styles.privacyItemText}>Données stockées localement uniquement.</Text>
+        </View>
+        
+        <View style={styles.privacyItem}>
+          <Text style={styles.privacyItemTitle}>💾 {strings.localStorageTitle}</Text>
+          <Text style={styles.privacyItemText}>Aucune transmission vers des serveurs externes.</Text>
+        </View>
+        
+        <View style={styles.privacyWarning}>
+          <Text style={styles.privacyWarningTitle}>⚠️ {strings.unofficialApp}</Text>
+          <Text style={styles.privacyWarningText}>Application non approuvée officiellement.</Text>
+        </View>
+      </View>
+      
+      <Button
+        title={strings.understood}
+        onPress={hideModal}
+        style={styles.modalButton}
+      />
+    </View>
+  );
+}
+
+function CalculationsModal() {
+  const { strings } = useLanguage();
+  const { theme } = useTheme();
+  const { hideModal } = useModal();
+  const styles = createStyles(theme);
+
+  return (
+    <View style={styles.calculationsModalContent}>
+      <View style={styles.modalHeader}>
+        <Calculator size={32} color={theme.colors.success} />
+        <Text style={styles.modalTitle}>Calculs de conformité</Text>
+        <TouchableOpacity 
+          onPress={hideModal}
+          style={styles.closeButton}
+        >
+          <X size={20} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
+      
+      <ScrollView 
+        style={styles.calculationsScrollView} 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.calculationsScrollContent}
+      >
+        {/* Formule principale */}
+        <View style={styles.calculationSection}>
+          <Text style={styles.calculationTitle}>📐 Formule de calcul de l'écart</Text>
+          <View style={styles.formulaContainer}>
+            <Text style={styles.formulaText}>
+              Écart (%) = ((Débit mesuré - Débit de référence) / Débit de référence) × 100
+            </Text>
+          </View>
+          <Text style={styles.calculationDescription}>
+            Cette formule calcule l'écart relatif entre la valeur mesurée et la valeur de référence, exprimé en pourcentage.
+          </Text>
+        </View>
+
+        {/* Critères de conformité */}
+        <View style={styles.calculationSection}>
+          <Text style={styles.calculationTitle}>⚖️ Critères de conformité NF S61-933 Annexe H</Text>
+          
+          <View style={styles.criteriaContainer}>
+            <View style={styles.criteriaItem}>
+              <View style={[styles.criteriaIndicator, { backgroundColor: '#10B981' }]} />
+              <View style={styles.criteriaContent}>
+                <Text style={styles.criteriaLabel}>Fonctionnel (|Écart| ≤ 10%)</Text>
+                <Text style={styles.criteriaDescription}>
+                  Un écart inférieur à ±10% entre les valeurs retenues lors de l'essai fonctionnel et les valeurs de référence conduit au constat du fonctionnement attendu du système de désenfumage mécanique.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.criteriaItem}>
+              <View style={[styles.criteriaIndicator, { backgroundColor: '#F59E0B' }]} />
+              <View style={styles.criteriaContent}>
+                <Text style={styles.criteriaLabel}>Acceptable (10% {'<'} |Écart| ≤ 20%)</Text>
+                <Text style={styles.criteriaDescription}>
+                  Un écart compris entre ±10% et ±20% conduit à signaler cette dérive, par une proposition d'action corrective à l'exploitant ou au chef d'établissement.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.criteriaItem}>
+              <View style={[styles.criteriaIndicator, { backgroundColor: '#EF4444' }]} />
+              <View style={styles.criteriaContent}>
+                <Text style={styles.criteriaLabel}>Non conforme (|Écart| {'>'} 20%)</Text>
+                <Text style={styles.criteriaDescription}>
+                  Un écart supérieur à ±20% doit conduire à une action corrective obligatoire, la valeur étant jugée non conforme à la mise en service.
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* Exemples de calcul */}
+        <View style={styles.calculationSection}>
+          <Text style={styles.calculationTitle}>🧮 Exemples de calcul</Text>
+          
+          <View style={styles.exampleContainer}>
+            <Text style={styles.exampleTitle}>Exemple 1 : Volet fonctionnel</Text>
+            <Text style={styles.exampleData}>
+              • Débit de référence : 5000 m³/h{'\n'}
+              • Débit mesuré : 4900 m³/h
+            </Text>
+            <Text style={styles.exampleCalculation}>
+              Écart = ((4900 - 5000) / 5000) × 100 = -2%
+            </Text>
+            <Text style={styles.exampleResult}>
+              ✅ Résultat : <Text style={{ color: '#10B981', fontWeight: 'bold' }}>Fonctionnel</Text> (|2%| ≤ 10%)
+            </Text>
+          </View>
+
+          <View style={styles.exampleContainer}>
+            <Text style={styles.exampleTitle}>Exemple 2 : Volet acceptable</Text>
+            <Text style={styles.exampleData}>
+              • Débit de référence : 3000 m³/h{'\n'}
+              • Débit mesuré : 3450 m³/h
+            </Text>
+            <Text style={styles.exampleCalculation}>
+              Écart = ((3450 - 3000) / 3000) × 100 = +15%
+            </Text>
+            <Text style={styles.exampleResult}>
+              ⚠️ Résultat : <Text style={{ color: '#F59E0B', fontWeight: 'bold' }}>Acceptable</Text> (10% {'<'} |15%| ≤ 20%)
+            </Text>
+          </View>
+
+          <View style={styles.exampleContainer}>
+            <Text style={styles.exampleTitle}>Exemple 3 : Volet non conforme</Text>
+            <Text style={styles.exampleData}>
+              • Débit de référence : 4000 m³/h{'\n'}
+              • Débit mesuré : 3000 m³/h
+            </Text>
+            <Text style={styles.exampleCalculation}>
+              Écart = ((3000 - 4000) / 4000) × 100 = -25%
+            </Text>
+            <Text style={styles.exampleResult}>
+              ❌ Résultat : <Text style={{ color: '#EF4444', fontWeight: 'bold' }}>Non conforme</Text> (|25%| {'>'} 20%)
+            </Text>
+          </View>
+        </View>
+
+        {/* Algorithme de validation */}
+        <View style={styles.calculationSection}>
+          <Text style={styles.calculationTitle}>🔧 Algorithme de validation</Text>
+          <View style={styles.algorithmContainer}>
+            <Text style={styles.algorithmStep}>1. Vérification des données d'entrée</Text>
+            <Text style={styles.algorithmDetail}>   • Débit de référence > 0</Text>
+            <Text style={styles.algorithmDetail}>   • Débit mesuré ≥ 0</Text>
+            
+            <Text style={styles.algorithmStep}>2. Calcul de l'écart relatif</Text>
+            <Text style={styles.algorithmDetail}>   • Écart = ((Mesuré - Référence) / Référence) × 100</Text>
+            
+            <Text style={styles.algorithmStep}>3. Détermination du statut</Text>
+            <Text style={styles.algorithmDetail}>   • Si |Écart| ≤ 10% → Fonctionnel</Text>
+            <Text style={styles.algorithmDetail}>   • Si 10% {'<'} |Écart| ≤ 20% → Acceptable</Text>
+            <Text style={styles.algorithmDetail}>   • Si |Écart| {'>'} 20% → Non conforme</Text>
+          </View>
+        </View>
+
+        {/* Note technique */}
+        <View style={styles.technicalNote}>
+          <Text style={styles.technicalNoteTitle}>📋 Note technique</Text>
+          <Text style={styles.technicalNoteText}>
+            Les calculs sont effectués en temps réel lors de la saisie des données. L'application utilise la précision JavaScript standard (IEEE 754) et arrondit les résultats à une décimale pour l'affichage.
+            {'\n\n'}
+            La conformité est évaluée selon les critères officiels de la norme française NF S61-933 Annexe H, version en vigueur.
+          </Text>
+        </View>
+      </ScrollView>
+
+      <View style={styles.modalFooter}>
+        <Button
+          title={strings.understood}
+          onPress={hideModal}
+          style={styles.modalButton}
+        />
+      </View>
+    </View>
+  );
+}
+
+function ContactDeveloperModal() {
+  const { strings } = useLanguage();
+  const { theme } = useTheme();
+  const { hideModal } = useModal();
+  const styles = createStyles(theme);
+
+  const developerEmail = 'aimeric.krol@siemens.com';
+  const emailSubject = 'Contact depuis CalcConform';
+  const emailBody = 'Bonjour,\n\nJe vous contacte concernant l\'application CalcConform.\n\n';
+
+  const handleSendEmail = async () => {
+    try {
+      const mailtoUrl = `mailto:${developerEmail}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
+      
+      if (Platform.OS === 'web') {
+        window.open(mailtoUrl, '_blank');
+      } else {
+        const canOpen = await Linking.canOpenURL(mailtoUrl);
+        if (canOpen) {
+          await Linking.openURL(mailtoUrl);
+        } else {
+          Alert.alert('Erreur', 'Impossible d\'ouvrir l\'application email');
+        }
+      }
+    } catch (error) {
+      console.error('Erreur lors de l\'ouverture de l\'email:', error);
+      Alert.alert('Erreur', 'Impossible d\'ouvrir l\'application email');
+    }
+  };
+
+  const handleCopyEmail = async () => {
+    try {
+      if (Platform.OS === 'web') {
+        await navigator.clipboard.writeText(developerEmail);
+      } else {
+        Clipboard.setString(developerEmail);
+      }
+      Alert.alert('Succès', 'Adresse email copiée dans le presse-papiers');
+    } catch (error) {
+      console.error('Erreur lors de la copie:', error);
+      Alert.alert('Erreur', 'Impossible de copier l\'adresse email');
+    }
+  };
+
+  return (
+    <View style={styles.modalContent}>
+      <View style={styles.modalHeader}>
+        <Info size={32} color={theme.colors.primary} />
+        <Text style={styles.modalTitle}>Contacter le développeur</Text>
+        <TouchableOpacity 
+          onPress={hideModal}
+          style={styles.closeButton}
+        >
+          <X size={20} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
+      
+      <View style={styles.contactContent}>
+        <Text style={styles.contactIntro}>
+          Vous avez des questions, suggestions ou rencontrez un problème ? N'hésitez pas à me contacter !
+        </Text>
+        
+        <View style={styles.contactInfo}>
+          <Text style={styles.contactLabel}>Email :</Text>
+          <Text style={styles.contactEmail}>{developerEmail}</Text>
+        </View>
+        
+        <Text style={styles.contactEncouragement}>
+          Vos retours sont précieux pour améliorer l'application et ajouter de nouvelles fonctionnalités utiles.
+        </Text>
+      </View>
+
+      <View style={styles.contactButtons}>
+        <Button
+          title="Envoyer un email"
+          onPress={handleSendEmail}
+          style={[styles.contactButton, { marginBottom: 8 }]}
+        />
+        <Button
+          title="Copier l'email"
+          onPress={handleCopyEmail}
+          variant="secondary"
+          style={styles.contactButton}
+        />
+      </View>
+    </View>
+  );
+}
+
+const createStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.background,
   },
   content: {
     flex: 1,
   },
   contentContainer: {
     padding: 16,
+  },
+  contentContainerWeb: {
+    paddingBottom: Platform.OS === 'web' ? 100 : 16,
   },
   appHeader: {
     alignItems: 'center',
@@ -574,7 +502,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 20,
-    backgroundColor: '#F0FDFA',
+    backgroundColor: theme.colors.primary + '20',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
@@ -582,7 +510,7 @@ const styles = StyleSheet.create({
   appTitle: {
     fontSize: 20,
     fontFamily: 'Inter-SemiBold',
-    color: '#111827',
+    color: theme.colors.text,
     textAlign: 'center',
     marginBottom: 8,
     lineHeight: 28,
@@ -590,13 +518,13 @@ const styles = StyleSheet.create({
   developer: {
     fontSize: 16,
     fontFamily: 'Inter-Medium',
-    color: '#009999',
+    color: theme.colors.primary,
     marginBottom: 8,
   },
   copyright: {
     fontSize: 14,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
   },
   section: {
     marginBottom: 24,
@@ -604,14 +532,14 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontFamily: 'Inter-SemiBold',
-    color: '#111827',
+    color: theme.colors.text,
     marginBottom: 12,
   },
   infoItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 8,
@@ -630,7 +558,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 10,
-    backgroundColor: '#F0FDFA',
+    backgroundColor: theme.colors.primary + '20',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -641,47 +569,43 @@ const styles = StyleSheet.create({
   infoTitle: {
     fontSize: 16,
     fontFamily: 'Inter-Medium',
-    color: '#111827',
+    color: theme.colors.text,
   },
   infoSubtitle: {
     fontSize: 14,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
     marginTop: 2,
   },
   modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
+    // Supprimé car maintenant géré par le ModalProvider
   },
   modalContent: {
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.surface,
     borderRadius: 16,
-    padding: 24,
+    padding: 20,
     width: '100%',
     maxWidth: 400,
     maxHeight: '80%',
   },
   // Modal des calculs de conformité optimisé pour mobile SANS BARRE DE SCROLL
   calculationsModalContent: {
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.surface,
     borderRadius: 16,
-    padding: 20,
+    padding: 16,
     width: '100%',
-    maxWidth: 650,
-    maxHeight: '85%',
+    maxWidth: 800,
+    maxHeight: Platform.OS === 'web' ? '85%' : '90%', // Hauteur augmentée
     marginVertical: 40,
   },
   // Modal des prochaines nouveautés optimisé pour mobile SANS BARRE DE SCROLL
   upcomingFeaturesModalContent: {
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.surface,
     borderRadius: 16,
-    padding: 20,
+    padding: 16,
     width: '100%',
-    maxWidth: 650,
-    maxHeight: '85%',
+    maxWidth: 800,
+    maxHeight: Platform.OS === 'web' ? '85%' : '90%', // Hauteur augmentée
     marginVertical: 40,
   },
   modalHeader: {
@@ -693,7 +617,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontFamily: 'Inter-SemiBold',
-    color: '#111827',
+    color: theme.colors.text,
     flex: 1,
     marginLeft: 12,
   },
@@ -724,13 +648,13 @@ const styles = StyleSheet.create({
   modalText: {
     fontSize: 14,
     fontFamily: 'Inter-Regular',
-    color: '#374151',
+    color: theme.colors.textSecondary,
     lineHeight: 20,
     marginBottom: 20,
   },
   modalBold: {
     fontFamily: 'Inter-SemiBold',
-    color: '#111827',
+    color: theme.colors.text,
   },
   modalButton: {
     marginTop: 8,
@@ -740,37 +664,83 @@ const styles = StyleSheet.create({
     paddingTop: 12,
   },
 
+  // Styles pour le modal de confidentialité
+  privacyContent: {
+    marginBottom: 16,
+  },
+  privacyItem: {
+    marginBottom: 10,
+    backgroundColor: theme.colors.surfaceSecondary,
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  privacyItemTitle: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: theme.colors.text,
+    marginBottom: 8,
+  },
+  privacyItemText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: theme.colors.textSecondary,
+    lineHeight: 20,
+  },
+  privacyWarning: {
+    backgroundColor: theme.colors.warning + '15',
+    borderRadius: 8,
+    padding: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: theme.colors.warning,
+    borderWidth: 1,
+    borderColor: theme.colors.warning + '40',
+  },
+  privacyWarningTitle: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: theme.colors.warning,
+    marginBottom: 8,
+  },
+  privacyWarningText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: theme.colors.warning,
+    lineHeight: 20,
+  },
+
   // Styles pour le contenu des calculs
   calculationSection: {
     marginBottom: 20,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: theme.colors.separator,
   },
   calculationTitle: {
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
-    color: '#111827',
+    color: theme.colors.text,
     marginBottom: 10,
   },
   formulaContainer: {
-    backgroundColor: '#F0FDFA',
+    backgroundColor: theme.colors.primary + '20',
     borderRadius: 8,
     padding: 12,
     marginBottom: 8,
     borderLeftWidth: 4,
-    borderLeftColor: '#10B981',
+    borderLeftColor: theme.colors.success,
   },
   formulaText: {
     fontSize: 13,
     fontFamily: 'Inter-Medium',
-    color: '#047857',
+    color: theme.colors.primary,
     textAlign: 'center',
   },
   calculationDescription: {
     fontSize: 12,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
     lineHeight: 16,
   },
   criteriaContainer: {
@@ -793,17 +763,17 @@ const styles = StyleSheet.create({
   criteriaLabel: {
     fontSize: 13,
     fontFamily: 'Inter-SemiBold',
-    color: '#111827',
+    color: theme.colors.text,
     marginBottom: 3,
   },
   criteriaDescription: {
     fontSize: 11,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
     lineHeight: 15,
   },
   exampleContainer: {
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.surfaceSecondary,
     borderRadius: 8,
     padding: 10,
     marginBottom: 10,
@@ -811,119 +781,148 @@ const styles = StyleSheet.create({
   exampleTitle: {
     fontSize: 13,
     fontFamily: 'Inter-SemiBold',
-    color: '#111827',
+    color: theme.colors.text,
     marginBottom: 5,
   },
   exampleData: {
     fontSize: 11,
     fontFamily: 'Inter-Regular',
-    color: '#374151',
+    color: theme.colors.textSecondary,
     marginBottom: 3,
   },
   exampleCalculation: {
     fontSize: 11,
     fontFamily: 'Inter-Medium',
-    color: '#009999',
+    color: theme.colors.primary,
     marginBottom: 5,
     fontStyle: 'italic',
   },
   exampleResult: {
     fontSize: 12,
     fontFamily: 'Inter-Medium',
-    color: '#111827',
+    color: theme.colors.text,
   },
   algorithmContainer: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: theme.colors.surfaceSecondary,
     borderRadius: 8,
     padding: 10,
   },
   algorithmStep: {
     fontSize: 12,
     fontFamily: 'Inter-SemiBold',
-    color: '#111827',
+    color: theme.colors.text,
     marginTop: 6,
     marginBottom: 3,
   },
   algorithmDetail: {
     fontSize: 11,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
     marginBottom: 2,
   },
   technicalNote: {
-    backgroundColor: '#FEF3C7',
+    backgroundColor: theme.colors.warning + '20',
     borderRadius: 8,
     padding: 10,
     borderLeftWidth: 4,
-    borderLeftColor: '#F59E0B',
+    borderLeftColor: theme.colors.warning,
   },
   technicalNoteTitle: {
     fontSize: 13,
     fontFamily: 'Inter-SemiBold',
-    color: '#92400E',
+    color: theme.colors.warning,
     marginBottom: 5,
   },
   technicalNoteText: {
     fontSize: 11,
     fontFamily: 'Inter-Regular',
-    color: '#92400E',
+    color: theme.colors.warning,
     lineHeight: 15,
   },
 
-  // Styles pour les prochaines nouveautés - VERSION CORRIGÉE
-  upcomingIntro: {
-    backgroundColor: '#F0FDFA',
-    borderRadius: 12,
-    padding: 16,
+  // Styles pour le modal de contact
+  contactContent: {
     marginBottom: 20,
-    borderLeftWidth: 4,
-    borderLeftColor: '#009999',
   },
-  upcomingIntroText: {
+  contactIntro: {
     fontSize: 14,
-    fontFamily: 'Inter-Medium',
-    color: '#047857',
+    fontFamily: 'Inter-Regular',
+    color: theme.colors.textSecondary,
     lineHeight: 20,
+    marginBottom: 16,
     textAlign: 'center',
   },
-  featureSection: {
-    marginBottom: 20,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+  contactInfo: {
+    backgroundColor: theme.colors.surfaceSecondary,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
   },
-  featureSectionTitle: {
-    fontSize: 16,
+  contactLabel: {
+    fontSize: 12,
+    fontFamily: 'Inter-Medium',
+    color: theme.colors.textSecondary,
+    marginBottom: 4,
+  },
+  contactEmail: {
+    fontSize: 14,
     fontFamily: 'Inter-SemiBold',
-    color: '#111827',
-    marginBottom: 14,
+    color: theme.colors.primary,
   },
-  featureItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 14,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    padding: 14,
-  },
-  featureIcon: {
-    fontSize: 22,
-    marginRight: 14,
-    marginTop: 2,
-  },
-  featureContent: {
-    flex: 1,
-  },
-  featureTitle: {
-    fontSize: 15,
-    fontFamily: 'Inter-SemiBold',
-    color: '#111827',
-    marginBottom: 5,
-  },
-  featureDescription: {
+  contactEncouragement: {
     fontSize: 13,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
+    lineHeight: 18,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  contactButtons: {
+    gap: 8,
+  },
+  contactButton: {
+    width: '100%',
+  },
+
+  // Styles pour le modal de confidentialité simplifié
+  privacyContent: {
+    marginBottom: 20,
+  },
+  privacyItem: {
+    marginBottom: 16,
+    backgroundColor: theme.colors.surfaceSecondary,
+    borderRadius: 8,
+    padding: 12,
+  },
+  privacyItemTitle: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+    color: theme.colors.text,
+    marginBottom: 6,
+  },
+  privacyItemText: {
+    fontSize: 13,
+    fontFamily: 'Inter-Regular',
+    color: theme.colors.textSecondary,
+    lineHeight: 18,
+  },
+  privacyWarning: {
+    backgroundColor: theme.colors.warning + '20',
+    borderRadius: 8,
+    padding: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: theme.colors.warning,
+  },
+  privacyWarningTitle: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+    color: theme.colors.warning,
+    marginBottom: 6,
+  },
+  privacyWarningText: {
+    fontSize: 13,
+    fontFamily: 'Inter-Regular',
+    color: theme.colors.warning,
     lineHeight: 18,
   },
 });

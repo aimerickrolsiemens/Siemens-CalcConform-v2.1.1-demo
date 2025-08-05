@@ -1,14 +1,13 @@
 {
   "expo": {
-    "name": "Siemens Smoke Extraction Calculator",
-    "slug": "siemens-smoke-extraction-calculator",
-    "version": "1.0.3",
+    "name": "Siemens CalcConform",
+    "slug": "siemens-calcconform",
+    "version": "2.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/icon1.png",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": false,
     "splash": {
-      "image": "./assets/images/icon.png",
+      "image": "./assets/images/icon1.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -17,21 +16,64 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.siemens.smokeextraction",
-      "icon": "./assets/images/icon.png"
+      "bundleIdentifier": "com.siemens.calcconform",
+      "icon": "./assets/images/icon1.png"
     },
     "android": {
-      "package": "com.siemens.smokeextraction",
-      "icon": "./assets/images/icon.png",
+      "package": "com.siemens.calcconform",
+      "icon": "./assets/images/icon1.png",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/icon.png",
+        "foregroundImage": "./assets/images/icon1.png",
         "backgroundColor": "#009999"
-      }
+      },
+      "permissions": [
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_EXTERNAL_STORAGE"
+      ],
+      "versionCode": 3
     },
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/icon.png"
+      "serviceWorker": {
+        "enabled": true,
+        "source": "./public/sw.js"
+      },
+      "build": {
+        "babel": {
+          "include": [
+            "node_modules/react-native-vector-icons"
+          ]
+        }
+      },
+      "favicon": "./assets/images/icon.png",
+      "favicon": "./assets/images/icon1.png",
+      "name": "Siemens CalcConform",
+      "shortName": "CalcConform",
+      "lang": "fr",
+      "scope": "/",
+      "themeColor": "#009999",
+      "backgroundColor": "#ffffff",
+      "display": "standalone",
+      "orientation": "portrait",
+      "startUrl": "/",
+      "preferRelatedApplications": false,
+      "relatedApplications": [],
+      "shortcuts": [
+        {
+          "name": "Calcul rapide",
+          "short_name": "Calcul",
+          "description": "Accès rapide au calculateur de conformité",
+          "url": "/simple",
+          "icons": [
+            {
+              "src": "./assets/images/icon1.png",
+              "sizes": "192x192",
+              "type": "image/png"
+            }
+          ]
+        }
+      ]
     },
     "plugins": [
       "expo-router",
@@ -42,8 +84,7 @@
         {
           "backgroundColor": "#ffffff",
           "image": "./assets/images/icon.png",
-          "resizeMode": "contain",
-          "imageWidth": 300
+          "resizeMode": "contain"
         }
       ]
     ],
