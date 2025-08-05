@@ -239,6 +239,15 @@ export default function ZoneDetailScreen() {
     />);
   };
 
+  // Fonction pour ouvrir le modal d'édition du nom
+  const openNameEditModal = (shutter: Shutter) => {
+    showModal(<EditShutterNameModal 
+      shutter={shutter}
+      onCancel={() => hideModal()}
+      strings={strings}
+    />);
+  };
+
   const confirmDeleteShutter = async (shutter: Shutter) => {
     try {
       console.log('🗑️ Confirmation suppression volet:', shutter.id);
@@ -659,7 +668,17 @@ export default function ZoneDetailScreen() {
               )}
               <Text style={[
                 styles.selectAllButtonText,
-                selectedShutters.size === sortedShutters.length
+          {/* Nom du volet cliquable pour édition directe */}
+          <TouchableOpacity 
+            style={[styles.shutterNameContainer, selectionMode && styles.shutterNameContainerSelection]}
+            onPress={() => !selectionMode && openNameEditModal(item)}
+            disabled={selectionMode}
+          >
+            <Text style={styles.shutterName} numberOfLines={1} ellipsizeMode="tail">
+              {item.name}
+            </Text>
+            {!selectionMode && <Text style={styles.editIcon}>✏️</Text>}
+          </TouchableOpacity>
                   ? styles.selectAllButtonTextActive 
                   : styles.selectAllButtonTextInactive
               ]}>
@@ -957,6 +976,77 @@ function BulkDeleteShuttersModal({ count, onConfirm, onCancel, strings }: any) {
   );
 }
 
+// Composant modal pour l'édition du nom de volet
+function EditShutterNameModal({ shutter, onCancel, strings }: {
+  shutter: Shutter;
+  onCancel: () => void;
+  strings: any;
+}) {
+  const { theme } = useTheme();
+  const { hideModal } = useModal();
+  const { updateShutter } = useStorage();
+  const [name, setName] = useState(shutter.name);
+  const styles = createStyles(theme);
+
+  const handleSave = async () => {
+    if (!shutter || !name.trim()) return;
+
+    try {
+      const updatedShutter = await updateShutter(shutter.id, {
+        name: name.trim(),
+      });
+      
+      if (updatedShutter) {
+        hideModal();
+      } else {
+        console.error('Erreur lors de la modification du nom du volet');
+      }
+    } catch (error) {
+      console.error('Erreur lors de la modification du nom du volet:', error);
+    }
+  };
+
+  return (
+    <View style={styles.modalContent}>
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle}>Modifier le nom du volet</Text>
+        <TouchableOpacity onPress={onCancel} style={styles.closeButton}>
+          <X size={20} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.modalBody}>
+        <Text style={styles.inputLabel}>Nom du volet *</Text>
+        <TextInput
+          style={styles.nameTextInput}
+          value={name}
+          onChangeText={setName}
+          placeholder="Ex: VH01, VB01"
+          placeholderTextColor={theme.colors.textTertiary}
+          autoFocus={true}
+          selectTextOnFocus={true}
+          returnKeyType="done"
+          blurOnSubmit={true}
+        />
+      </View>
+
+      <View style={styles.modalFooter}>
+        <Button
+          title={strings.cancel}
+          onPress={onCancel}
+          variant="secondary"
+          style={styles.modalButton}
+        />
+        <Button
+          title={strings.save}
+          onPress={handleSave}
+          style={styles.modalButton}
+        />
+      </View>
+    </View>
+  );
+}
+
 const createStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
@@ -1148,11 +1238,30 @@ const createStyles = (theme: any) => StyleSheet.create({
   checkbox: {
     padding: 2,
   },
+  // Conteneur pour le nom du volet cliquable
+  shutterNameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    backgroundColor: theme.colors.surfaceSecondary,
+    minWidth: 0,
+  },
+  shutterNameContainerSelection: {
+    backgroundColor: 'transparent',
+  },
   shutterName: {
     fontSize: 18,
     fontFamily: 'Inter-Bold',
     color: theme.colors.text,
     flex: 1,
+    minWidth: 0,
+  },
+  editIcon: {
+    fontSize: 12,
   },
   shutterTypeBadge: {
     paddingHorizontal: 8,
@@ -1307,6 +1416,24 @@ const createStyles = (theme: any) => StyleSheet.create({
   },
   modalButton: {
     flex: 1,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    color: theme.colors.textSecondary,
+    marginBottom: 6,
+  },
+  nameTextInput: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    backgroundColor: theme.colors.inputBackground,
+    color: theme.colors.text,
+    minHeight: 48,
   },
   
   // Styles pour les filtres
