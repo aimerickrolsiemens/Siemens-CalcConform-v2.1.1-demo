@@ -674,6 +674,9 @@ export default function ZoneDetailScreen() {
               styles.shutterNameContainer,
               selectionMode ? styles.shutterNameContainerSelection : null
             ]}
+              styles.shutterNameContainer,
+              selectionMode ? styles.shutterNameContainerSelection : null
+            ]}
             onPress={() => !selectionMode && openNameEditModal(item)}
             disabled={selectionMode}
           >
