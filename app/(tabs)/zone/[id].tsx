@@ -667,24 +667,6 @@ export default function ZoneDetailScreen() {
                 <Square size={20} color={theme.colors.textTertiary} />
               )}
               <Text style={[
-                styles.selectAllButtonText,
-          {/* Nom du volet cliquable pour édition directe */}
-          <TouchableOpacity
-  style={[
-    styles.shutterNameContainer,
-    selectionMode ? styles.shutterNameContainerActive : null,
-    selectionMode ? styles.shutterNameContainerSelection : null
-  ]}
-  onPress={() => !selectionMode && openNameEditModal(item)}
-  disabled={selectionMode}
->
-  {/* Ton contenu */}
-</TouchableOpacity>
-            <Text style={styles.shutterName} numberOfLines={1} ellipsizeMode="tail">
-              {item.name}
-            </Text>
-            {!selectionMode && <Text style={styles.editIcon}>✏️</Text>}
-          </TouchableOpacity>
                   ? styles.selectAllButtonTextActive 
                   : styles.selectAllButtonTextInactive
               ]}>
