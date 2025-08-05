@@ -670,7 +670,10 @@ export default function ZoneDetailScreen() {
                 styles.selectAllButtonText,
           {/* Nom du volet cliquable pour édition directe */}
           <TouchableOpacity 
-            style={[styles.shutterNameContainer, selectionMode && styles.shutterNameContainerSelection]}
+            style={[
+              styles.shutterNameContainer,
+              selectionMode ? styles.shutterNameContainerSelection : null
+            ]}
             onPress={() => !selectionMode && openNameEditModal(item)}
             disabled={selectionMode}
           >
