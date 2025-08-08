@@ -180,18 +180,26 @@ export function AuthenticationScreen() {
 
 const createStyles = (theme: any) => StyleSheet.create({
   overlay: {
-    position: 'fixed',
+    position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
+    width: '100%',
+    height: '100%',
     backgroundColor: '#0B1220',
-    width: '100vw',
-    height: '100vh',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 999999,
+    margin: 0,
     padding: 20,
+    ...(Platform.OS === 'web' && {
+      position: 'fixed',
+      width: '100vw',
+      height: '100vh',
+      margin: 0,
+      padding: 20,
+    }),
   },
   container: {
     backgroundColor: theme.colors.surface,
