@@ -6,6 +6,7 @@ import { Button } from '@/components/Button';
 import { useStorage } from '@/contexts/StorageContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useTheme, ThemeMode } from '@/contexts/ThemeContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useModal } from '@/contexts/ModalContext';
 import { getLanguageOptions, SupportedLanguage } from '@/utils/i18n';
 import { router } from 'expo-router';
@@ -13,6 +14,7 @@ import { router } from 'expo-router';
 export default function SettingsScreen() {
   const { strings, currentLanguage, changeLanguage } = useLanguage();
   const { theme, themeMode, setThemeMode } = useTheme();
+  const { logout } = useAuth();
   const { showModal, hideModal } = useModal();
   const { clearAllData, getStorageInfo } = useStorage();
   const [storageInfo, setStorageInfo] = useState<{
@@ -107,6 +109,23 @@ export default function SettingsScreen() {
     router.push('/(tabs)/about');
   };
 
+  const handleLogout = () => {
+    showModal(
+      <LogoutModal onConfirm={confirmLogout} onCancel={hideModal} />,
+      { animationType: 'fade' }
+    );
+  };
+
+  const confirmLogout = async () => {
+    try {
+      await logout();
+      hideModal();
+    } catch (error) {
+      console.error('Erreur lors de la déconnexion:', error);
+      hideModal();
+    }
+  };
+
   const showLanguageModal = () => {
     showModal(
       <LanguageModal 
@@ -150,6 +169,15 @@ export default function SettingsScreen() {
           </Text>
           {subtitle && (
             <Text style={styles.settingSubtitle}>{subtitle}</Text>
+          )}
+          
+          {renderSettingItem(
+            <Shield size={20} color={theme.colors.error} />,
+            'Déconnexion',
+            'Se déconnecter de l\'application',
+            handleLogout,
+            undefined,
+            true
           )}
         </View>
       </View>
@@ -259,6 +287,50 @@ export default function SettingsScreen() {
         </ScrollView>
       </View>
 
+    </View>
+  );
+}
+
+// Composant modal pour la déconnexion
+function LogoutModal({ onConfirm, onCancel }: { onConfirm: () => Promise<void>; onCancel: () => void }) {
+  const { strings } = useLanguage();
+  const { theme } = useTheme();
+  const styles = createStyles(theme);
+
+  const handleConfirm = async () => {
+    await onConfirm();
+    onCancel();
+  };
+
+  return (
+    <View style={styles.modalContent}>
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle}>Confirmer la déconnexion</Text>
+      </View>
+      
+      <Text style={styles.modalText}>
+        <Text>⚠️ </Text>
+        <Text style={styles.modalBold}>Êtes-vous sûr de vouloir vous déconnecter ?</Text>
+        <Text>{'\n\n'}</Text>
+        <Text>Vous devrez saisir à nouveau le code d'authentification pour accéder à l'application.</Text>
+        <Text>{'\n\n'}</Text>
+        <Text>Vos données resteront sauvegardées sur cet appareil.</Text>
+      </Text>
+
+      <View style={styles.modalFooter}>
+        <Button
+          title={strings.cancel}
+          onPress={onCancel}
+          variant="secondary"
+          style={styles.modalButton}
+        />
+        <Button
+          title="Se déconnecter"
+          onPress={handleConfirm}
+          variant="danger"
+          style={styles.modalButton}
+        />
+      </View>
     </View>
   );
 }

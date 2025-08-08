@@ -8,6 +8,8 @@ import { LanguageProvider } from '@/contexts/LanguageContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { StorageProvider } from '@/contexts/StorageContext';
 import { ModalProvider } from '@/contexts/ModalContext';
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { AuthenticationScreen } from '@/components/AuthenticationScreen';
 import { InstallPrompt } from '@/components/InstallPrompt';
 import { useInstallPrompt } from '@/hooks/useInstallPrompt';
 import { Platform, View, Text, StyleSheet } from 'react-native';
@@ -45,11 +47,9 @@ function ErrorScreen({ error }: { error: string }) {
   );
 }
 
-export default function RootLayout() {
-  useFrameworkReady();
-  
-  const [isReady, setIsReady] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+// Composant wrapper pour gérer l'authentification
+function AuthenticatedApp() {
+  const { isAuthenticated, isLoading } = useAuth();
   const { 
     showInstallButton, 
     showIOSInstructions, 
@@ -60,6 +60,38 @@ export default function RootLayout() {
     showAndroidInstructions,
     hideAndroidInstructions
   } = useInstallPrompt();
+
+  // Afficher l'écran de chargement pendant la vérification d'authentification
+  if (isLoading) {
+    return <LoadingScreen />;
+  }
+
+  return (
+    <>
+      <Slot />
+      <StatusBar style="auto" />
+      <InstallPrompt 
+        visible={false}
+        onInstall={handleInstallClick}
+        onClose={hideInstallButton} 
+        showAndroidInstructions={showAndroidInstructions}
+        onCloseAndroidInstructions={hideAndroidInstructions}
+        showIOSInstructions={showIOSInstructions}
+        onCloseIOSInstructions={hideIOSInstructions}
+        isIOSDevice={isIOSDevice}
+      />
+      
+      {/* Écran d'authentification modal bloquant */}
+      {!isAuthenticated && <AuthenticationScreen />}
+    </>
+  );
+}
+
+export default function RootLayout() {
+  useFrameworkReady();
+  
+  const [isReady, setIsReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Configuration spécifique pour le web mobile
   useEffect(() => {
@@ -189,22 +221,13 @@ export default function RootLayout() {
   return (
     <ThemeProvider>
       <LanguageProvider>
-        <StorageProvider>
-          <ModalProvider>
-            <Slot />
-            <StatusBar style="auto" />
-            <InstallPrompt 
-              visible={false}
-              onInstall={handleInstallClick}
-              onClose={hideInstallButton} 
-              showAndroidInstructions={showAndroidInstructions}
-              onCloseAndroidInstructions={hideAndroidInstructions}
-              showIOSInstructions={showIOSInstructions}
-              onCloseIOSInstructions={hideIOSInstructions}
-              isIOSDevice={isIOSDevice}
-            />
-          </ModalProvider>
-        </StorageProvider>
+        <AuthProvider>
+          <StorageProvider>
+            <ModalProvider>
+              <AuthenticatedApp />
+            </ModalProvider>
+          </StorageProvider>
+        </AuthProvider>
       </LanguageProvider>
     </ThemeProvider>
   );
