@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
-import { Download, FileText, Building, Wind, CheckCircle, AlertCircle, Share } from 'lucide-react-native';
+import { Download, FileText, Building, Wind, CircleCheck as CheckCircle, CircleAlert as AlertCircle, Share } from 'lucide-react-native';
 import { Header } from '@/components/Header';
 import { Button } from '@/components/Button';
 import { Project } from '@/types';
