@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Platform, ScrollView, TextInput, Animated } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Plus, FileText, Trash2, CreditCard as Edit3, Calendar, X, Star, SquareCheck as CheckSquare, Square, Filter, Dessert as SortDesc, Clock } from 'lucide-react-native';
+import { Settings } from 'lucide-react-native';
 import { Header } from '@/components/Header';
 import { Button } from '@/components/Button';
 import { Note } from '@/types';
@@ -113,6 +114,12 @@ function NoteItem({ item, index, onPress, onEdit, onDelete, onToggleFavorite, is
                 </TouchableOpacity>
                 <TouchableOpacity 
                   style={styles.actionButton}
+                  onPress={() => onEdit(item)}
+                >
+                  <Settings size={16} color={theme.colors.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.actionButton}
                   onPress={() => onDelete(item)}
                 >
                   <Trash2 size={16} color={theme.colors.error} />
@@ -122,12 +129,43 @@ function NoteItem({ item, index, onPress, onEdit, onDelete, onToggleFavorite, is
           </View>
         </View>
 
-        {/* Aperçu du contenu */}
-        {item.content && (
-          <Text style={styles.notePreview} numberOfLines={2}>
-            {getPreviewText(item.content)}
-          </Text>
+        {item.description && (
+          <View style={styles.descriptionRow}>
+            <View style={styles.descriptionContainer}>
+              <Text style={styles.noteDescription} numberOfLines={1} ellipsizeMode="tail">
+                Description : {item.description}
+              </Text>
+            </View>
+          </View>
         )}
+
+        {(item.location || item.tags) && (
+          <View style={styles.badgesRow}>
+            {item.location && (
+              <View style={styles.locationBadge}>
+                <Text style={styles.badgeText} numberOfLines={1} ellipsizeMode="tail">
+                  Lieu : {item.location}
+                </Text>
+              </View>
+            )}
+            {item.tags && (
+              <View style={styles.tagsBadge}>
+                <Text style={styles.badgeText} numberOfLines={1} ellipsizeMode="tail">
+                  Mots-clés : {item.tags}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {item.content && (
+          <View style={styles.contentPreviewContainer}>
+            <Text style={styles.notePreview} numberOfLines={2}>
+              {getPreviewText(item.content)}
+            </Text>
+          </View>
+        )}
+
       </TouchableOpacity>
     </View>
   );
@@ -224,11 +262,8 @@ export default function NotesScreen() {
   };
 
   const handleEditNote = (note: Note) => {
-    showModal(<EditNoteTitleModal 
-      note={note}
-      onCancel={() => hideModal()}
-      strings={strings}
-    />);
+    console.log('✏️ Navigation vers édition note:', note.id);
+    safeNavigate(`/(tabs)/note/edit/${note.id}`);
   };
 
   const handleDeleteNote = (note: Note) => {
@@ -475,78 +510,65 @@ export default function NotesScreen() {
 
       {/* Barre de filtres */}
       {filterVisible && (
-        <View style={styles.filterBar}>
-          <View style={styles.filterSection}>
-            <Text style={styles.filterSectionTitle}>📅 Tri</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-              <View style={styles.filterButtons}>
-                <TouchableOpacity
-                  style={[styles.filterButton, sortOption === 'newest' && styles.filterButtonActive]}
-                  onPress={() => setSortOption('newest')}
-                >
-                  <Text style={[styles.filterButtonText, sortOption === 'newest' && styles.filterButtonTextActive]}>
-                    Plus récentes
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.filterButton, sortOption === 'oldest' && styles.filterButtonActive]}
-                  onPress={() => setSortOption('oldest')}
-                >
-                  <Text style={[styles.filterButtonText, sortOption === 'oldest' && styles.filterButtonTextActive]}>
-                    Plus anciennes
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.filterButton, sortOption === 'updated' && styles.filterButtonActive]}
-                  onPress={() => setSortOption('updated')}
-                >
-                  <Text style={[styles.filterButtonText, sortOption === 'updated' && styles.filterButtonTextActive]}>
-                    Modifiées
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.filterButton, sortOption === 'title' && styles.filterButtonActive]}
-                  onPress={() => setSortOption('title')}
-                >
-                  <Text style={[styles.filterButtonText, sortOption === 'title' && styles.filterButtonTextActive]}>
-                    Alphabétique
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
-
-          <View style={styles.filterSection}>
-            <Text style={styles.filterSectionTitle}>🔍 Contenu</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-              <View style={styles.filterButtons}>
-                <TouchableOpacity
-                  style={[styles.filterButton, filterOption === 'all' && styles.filterButtonActive]}
-                  onPress={() => setFilterOption('all')}
-                >
-                  <Text style={[styles.filterButtonText, filterOption === 'all' && styles.filterButtonTextActive]}>
-                    Toutes ({notes.length})
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.filterButton, filterOption === 'with-images' && styles.filterButtonActive]}
-                  onPress={() => setFilterOption('with-images')}
-                >
-                  <Text style={[styles.filterButtonText, filterOption === 'with-images' && styles.filterButtonTextActive]}>
-                    Avec images ({notes.filter(n => n.images && n.images.length > 0).length})
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.filterButton, filterOption === 'text-only' && styles.filterButtonActive]}
-                  onPress={() => setFilterOption('text-only')}
-                >
-                  <Text style={[styles.filterButtonText, filterOption === 'text-only' && styles.filterButtonTextActive]}>
-                    Texte seul ({notes.filter(n => !n.images || n.images.length === 0).length})
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
+        <View style={styles.compactFilterBar}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.compactFilterScroll}>
+            <View style={styles.compactFilterButtons}>
+              {/* Tri */}
+              <TouchableOpacity
+                style={[styles.compactFilterButton, sortOption === 'newest' && styles.compactFilterButtonActive]}
+                onPress={() => setSortOption('newest')}
+              >
+                <Text style={[styles.compactFilterButtonText, sortOption === 'newest' && styles.compactFilterButtonTextActive]}>
+                  Récentes
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.compactFilterButton, sortOption === 'updated' && styles.compactFilterButtonActive]}
+                onPress={() => setSortOption('updated')}
+              >
+                <Text style={[styles.compactFilterButtonText, sortOption === 'updated' && styles.compactFilterButtonTextActive]}>
+                  Modifiées
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.compactFilterButton, sortOption === 'title' && styles.compactFilterButtonActive]}
+                onPress={() => setSortOption('title')}
+              >
+                <Text style={[styles.compactFilterButtonText, sortOption === 'title' && styles.compactFilterButtonTextActive]}>
+                  A-Z
+                </Text>
+              </TouchableOpacity>
+              
+              {/* Séparateur visuel */}
+              <View style={styles.filterSeparator} />
+              
+              {/* Contenu */}
+              <TouchableOpacity
+                style={[styles.compactFilterButton, filterOption === 'all' && styles.compactFilterButtonActive]}
+                onPress={() => setFilterOption('all')}
+              >
+                <Text style={[styles.compactFilterButtonText, filterOption === 'all' && styles.compactFilterButtonTextActive]}>
+                  Toutes ({notes.length})
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.compactFilterButton, filterOption === 'with-images' && styles.compactFilterButtonActive]}
+                onPress={() => setFilterOption('with-images')}
+              >
+                <Text style={[styles.compactFilterButtonText, filterOption === 'with-images' && styles.compactFilterButtonTextActive]}>
+                  📷 ({notes.filter(n => n.images && n.images.length > 0).length})
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.compactFilterButton, filterOption === 'text-only' && styles.compactFilterButtonActive]}
+                onPress={() => setFilterOption('text-only')}
+              >
+                <Text style={[styles.compactFilterButtonText, filterOption === 'text-only' && styles.compactFilterButtonTextActive]}>
+                  📝 ({notes.filter(n => !n.images || n.images.length === 0).length})
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
         </View>
       )}
 
@@ -860,8 +882,51 @@ const createStyles = (theme: any) => StyleSheet.create({
     backgroundColor: theme.colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  // Nouveaux styles pour la barre de filtres compacte
+  compactFilterBar: {
+    backgroundColor: theme.colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  compactFilterScroll: {
+    flexGrow: 0,
+  },
+  compactFilterButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 4,
+  },
+  filterSeparator: {
+    width: 1,
+    height: 20,
+    backgroundColor: theme.colors.border,
+    marginHorizontal: 4,
+  },
+  compactFilterButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: theme.colors.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  compactFilterButtonActive: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  compactFilterButtonText: {
+    fontSize: 11,
+    fontFamily: 'Inter-Medium',
+    color: theme.colors.textSecondary,
+  },
+  compactFilterButtonTextActive: {
+    color: '#ffffff',
   },
   filterSection: {
     marginBottom: 16,
@@ -912,6 +977,8 @@ const createStyles = (theme: any) => StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 3,
     elevation: 2,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   selectedCard: {
     borderWidth: 2,
@@ -960,6 +1027,18 @@ const createStyles = (theme: any) => StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  priorityBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginRight: 8,
+  },
+  priorityBadgeText: {
+    fontSize: 10,
+    fontFamily: 'Inter-Bold',
+    color: '#FFFFFF',
+    textTransform: 'uppercase',
+  },
   noteDate: {
     fontSize: 13,
     fontFamily: 'Inter-Medium',
@@ -971,20 +1050,90 @@ const createStyles = (theme: any) => StyleSheet.create({
     color: theme.colors.primary,
     marginRight: 12,
   },
-  photoIndicatorCentered: {
-    marginRight: 12, // Décaler légèrement vers la gauche pour centrer
-  },
   noteActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
+  descriptionRow: {
+    marginBottom: 8,
+  },
+  descriptionContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.primary + '15',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderLeftWidth: 3,
+    borderLeftColor: theme.colors.primary,
+  },
+  descriptionIcon: {
+    fontSize: 12,
+    marginRight: 6,
+  },
+  noteDescription: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    color: theme.colors.primary,
+    flex: 1,
+  },
+  badgesRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+    flexWrap: 'wrap',
+  },
+  locationBadge: {
+    backgroundColor: theme.colors.success + '20',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: theme.colors.success + '40',
+    flex: 1,
+    minWidth: 0,
+  },
+  tagsBadge: {
+    backgroundColor: theme.colors.warning + '20',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: theme.colors.warning + '40',
+    flex: 1,
+    minWidth: 0,
+  },
+  badgeText: {
+    fontSize: 11,
+    fontFamily: 'Inter-Medium',
+    color: theme.colors.textSecondary,
+  },
+  contentPreviewContainer: {
+    marginTop: 4,
+  },
   notePreview: {
-    fontSize: 15,
+    fontSize: 14,
     fontFamily: 'Inter-Regular',
     color: theme.colors.textSecondary,
-    lineHeight: 22,
-    marginTop: 4,
+    lineHeight: 20,
+  },
+  metaInfoRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 4,
+  },
+  noteLocation: {
+    fontSize: 13,
+    fontFamily: 'Inter-Medium',
+    color: theme.colors.textSecondary,
+    fontStyle: 'italic',
+  },
+  noteTags: {
+    fontSize: 13,
+    fontFamily: 'Inter-Regular',
+    color: theme.colors.textSecondary,
+    flex: 1,
   },
   listContent: {
     padding: 16,
@@ -1010,18 +1159,16 @@ const createStyles = (theme: any) => StyleSheet.create({
     textAlign: 'center',
   },
   emptySubtitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontFamily: 'Inter-Regular',
     color: theme.colors.textSecondary,
     textAlign: 'center',
-    marginBottom: 40,
-    lineHeight: 26,
+    marginBottom: 32,
+    lineHeight: 24,
   },
   createButton: {
-    paddingHorizontal: 40,
-    paddingVertical: 16,
+    paddingHorizontal: 32,
   },
-  // Styles pour le modal
   modalContent: {
     backgroundColor: theme.colors.surface,
     borderRadius: 16,
@@ -1053,7 +1200,6 @@ const createStyles = (theme: any) => StyleSheet.create({
     fontFamily: 'Inter-Regular',
     color: theme.colors.textSecondary,
     lineHeight: 20,
-    marginBottom: 8,
   },
   modalBold: {
     fontFamily: 'Inter-SemiBold',

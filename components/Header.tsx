@@ -79,7 +79,7 @@ export function Header({ title, subtitle, onBack, rightComponent, showSettings =
             </TouchableOpacity>
           )}
           <View style={styles.titleContainer}>
-            <Text style={styles.pageTitle}>{title}</Text>
+            {typeof title === 'string' ? <Text style={styles.pageTitle}>{title}</Text> : title}
             {subtitle && (
               <Text style={styles.subtitle}>{subtitle}</Text>
             )}

@@ -326,7 +326,7 @@ export function StorageProvider({ children }: StorageProviderProps) {
       // Cache dans le Service Worker pour l'accès hors ligne
       if (Platform.OS === 'web' && 'serviceWorker' in navigator) {
         try {
-          const cache = await caches.open('siemens-runtime-v2.0.0');
+          const cache = await caches.open('siemens-runtime-v2.1.0');
           const response = new Response(JSON.stringify(newProjects), {
             headers: { 'Content-Type': 'application/json' }
           });
@@ -918,7 +918,7 @@ export function StorageProvider({ children }: StorageProviderProps) {
       // Cache dans le Service Worker pour l'accès hors ligne
       if (Platform.OS === 'web' && 'serviceWorker' in navigator) {
         try {
-          const cache = await caches.open('siemens-runtime-v2.0.0');
+          const cache = await caches.open('siemens-runtime-v2.1.0');
           const response = new Response(JSON.stringify(newNotes), {
             headers: { 'Content-Type': 'application/json' }
           });

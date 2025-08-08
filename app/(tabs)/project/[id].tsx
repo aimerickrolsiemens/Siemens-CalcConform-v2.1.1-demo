@@ -406,7 +406,6 @@ export default function ProjectDetailScreen() {
                 </TouchableOpacity>
               )}
               <Building size={20} color={theme.colors.primary} />
-              {/* NOUVEAU : Nom du bâtiment cliquable pour édition directe */}
               <TouchableOpacity 
                 style={[styles.buildingNameContainer, selectionMode && styles.buildingNameContainerSelection]}
                 onPress={() => !selectionMode && openNameEditModal(item)}
@@ -814,6 +813,24 @@ const createStyles = (theme: any) => StyleSheet.create({
   modalButton: {
     flex: 1,
   },
+  inputLabel: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    color: theme.colors.textSecondary,
+    marginBottom: 6,
+  },
+  nameTextInput: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    backgroundColor: theme.colors.inputBackground,
+    color: theme.colors.text,
+    minHeight: 48,
+  },
   buildingCard: {
     backgroundColor: theme.colors.surface,
     borderRadius: 16,
@@ -856,7 +873,6 @@ const createStyles = (theme: any) => StyleSheet.create({
     padding: 2,
     flexShrink: 0,
   },
-  // NOUVEAU : Conteneur pour le nom du bâtiment cliquable
   buildingNameContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -946,13 +962,6 @@ const createStyles = (theme: any) => StyleSheet.create({
       paddingBottom: 100,
       paddingHorizontal: 20,
     }),
-  },
-  // NOUVEAU : Modal spécifique pour l'édition du nom
-  nameEditModalContent: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: 16,
-    width: '100%',
-    maxWidth: 400,
   },
 });
 
@@ -1115,7 +1124,7 @@ function EditBuildingNameModal({ building, onSave, onCancel, strings }: any) {
   };
 
   return (
-    <View style={styles.nameEditModalContent}>
+    <View style={styles.modalContent}>
       <View style={styles.modalHeader}>
         <Text style={styles.modalTitle}>Modifier le nom du bâtiment</Text>
         <TouchableOpacity onPress={onCancel} style={styles.closeButton}>
@@ -1124,11 +1133,17 @@ function EditBuildingNameModal({ building, onSave, onCancel, strings }: any) {
       </View>
 
       <View style={styles.modalBody}>
-        <Input
-          label={`${strings.buildingName} *`}
+        <Text style={styles.inputLabel}>Nom du bâtiment *</Text>
+        <TextInput
+          style={styles.nameTextInput}
           value={name}
           onChangeText={setName}
           placeholder="Ex: Bâtiment A, Tour Nord"
+          placeholderTextColor={theme.colors.textTertiary}
+          autoFocus={true}
+          selectTextOnFocus={true}
+          returnKeyType="done"
+          blurOnSubmit={true}
         />
       </View>
 

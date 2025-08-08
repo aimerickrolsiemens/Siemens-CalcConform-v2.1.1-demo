@@ -1,290 +1,265 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
-import { X, Share, Plus, Smartphone } from 'lucide-react-native';
+import { Download, X, Share, Plus } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Button } from '@/components/Button';
-import { useAndroidBackButton } from '@/utils/BackHandler';
 
 interface InstallPromptProps {
   visible: boolean;
+  onInstall: () => void;
   onClose: () => void;
+  showAndroidInstructions?: boolean;
+  onCloseAndroidInstructions?: () => void;
+  showIOSInstructions?: boolean;
+  onCloseIOSInstructions?: () => void;
+  isIOSDevice?: boolean;
 }
 
-export function InstallPrompt({ visible, onClose }: InstallPromptProps) {
+export function InstallPrompt({ 
+  visible, 
+  onInstall, 
+  onClose, 
+  showAndroidInstructions = false,
+  onCloseAndroidInstructions,
+  showIOSInstructions = false,
+  onCloseIOSInstructions,
+  isIOSDevice = false
+}: InstallPromptProps) {
   const { theme } = useTheme();
 
-  // Configure Android back button pour fermer le popup
-  useAndroidBackButton(() => {
-    if (visible) {
-      onClose();
-      return true; // Empêcher le comportement par défaut
-    }
-    return false; // Laisser le comportement par défaut si le popup n'est pas visible
-  });
-
-  if (!visible || Platform.OS !== 'web') {
+  if (Platform.OS !== 'web') {
     return null;
   }
 
-  // Détecter le navigateur pour afficher les bonnes instructions
-  const getBrowserInstructions = () => {
-    if (typeof window === 'undefined') return 'safari';
-    
-    const userAgent = window.navigator.userAgent.toLowerCase();
-    
-    if (userAgent.includes('chrome') && !userAgent.includes('edg')) {
-      return 'chrome';
-    } else if (userAgent.includes('safari') && !userAgent.includes('chrome')) {
-      return 'safari';
-    } else if (userAgent.includes('firefox')) {
-      return 'firefox';
-    } else if (userAgent.includes('edg')) {
-      return 'edge';
-    }
-    
-    return 'chrome'; // Défaut
-  };
+  // Afficher les instructions Android
+  if (showAndroidInstructions) {
+    return (
+      <View style={styles.overlay}>
+        <View style={styles.modal}>
+          <AndroidInstallTutorial onClose={onCloseAndroidInstructions} />
+        </View>
+      </View>
+    );
+  }
 
-  const browserType = getBrowserInstructions();
+  // Afficher les instructions iOS
+  if (showIOSInstructions && isIOSDevice) {
+    return (
+      <View style={styles.overlay}>
+        <View style={styles.modal}>
+          <IOSInstallTutorial onClose={onCloseIOSInstructions} />
+        </View>
+      </View>
+    );
+  }
 
-  const getInstructions = () => {
-    switch (browserType) {
-      case 'safari':
-        return {
-          title: 'Ajouter à l\'écran d\'accueil',
-          steps: [
-            { icon: <Share size={16} color="#FFFFFF" />, text: 'Allez sur le menu de votre navigateur (⋮, ..., partager sur iOS)' },
-            { icon: <Plus size={16} color="#FFFFFF" />, text: 'Cliquez sur "Ajouter à l\'écran d\'accueil"' },
-            { icon: <Smartphone size={16} color="#FFFFFF" />, text: 'Ajoutez-le à votre écran d\'accueil' }
-          ]
-        };
-      case 'chrome':
-        return {
-          title: 'Installer l\'application',
-          steps: [
-            { icon: <Share size={16} color="#FFFFFF" />, text: 'Allez sur le menu de votre navigateur (⋮, ..., partager sur iOS)' },
-            { icon: <Plus size={16} color="#FFFFFF" />, text: 'Cliquez sur "Ajouter à l\'écran d\'accueil"' },
-            { icon: <Smartphone size={16} color="#FFFFFF" />, text: 'Ajoutez-le à votre écran d\'accueil' }
-          ]
-        };
-      case 'firefox':
-        return {
-          title: 'Ajouter à l\'écran d\'accueil',
-          steps: [
-            { icon: <Share size={16} color="#FFFFFF" />, text: 'Allez sur le menu de votre navigateur (⋮, ..., partager sur iOS)' },
-            { icon: <Plus size={16} color="#FFFFFF" />, text: 'Cliquez sur "Ajouter à l\'écran d\'accueil"' },
-            { icon: <Smartphone size={16} color="#FFFFFF" />, text: 'Ajoutez-le à votre écran d\'accueil' }
-          ]
-        };
-      default:
-        return {
-          title: 'Installer l\'application',
-          steps: [
-            { icon: <Share size={16} color="#FFFFFF" />, text: 'Allez sur le menu de votre navigateur (⋮, ..., partager sur iOS)' },
-            { icon: <Plus size={16} color="#FFFFFF" />, text: 'Cliquez sur "Ajouter à l\'écran d\'accueil"' },
-            { icon: <Smartphone size={16} color="#FFFFFF" />, text: 'Ajoutez-le à votre écran d\'accueil' }
-          ]
-        };
-    }
-  };
+  return null;
+}
 
-  const instructions = getInstructions();
-  const styles = createStyles(theme);
+// Composant tutoriel Android
+function AndroidInstallTutorial({ onClose }: { onClose?: () => void }) {
+  const { theme } = useTheme();
 
   return (
-    <View style={styles.overlay}>
-      <View style={styles.modalContent}>
-        <View style={styles.modalHeader}>
-          <Text style={styles.modalTitle}>{instructions.title}</Text>
-          <TouchableOpacity 
-            onPress={onClose}
-            style={styles.closeButton}
-          >
+    <View style={[styles.tutorialContent, { backgroundColor: theme.colors.surface }]}>
+      <View style={styles.tutorialHeader}>
+        <View style={[styles.tutorialIconContainer, { backgroundColor: theme.colors.primary + '20' }]}>
+          <Download size={24} color={theme.colors.primary} />
+        </View>
+        <View style={styles.tutorialTextContainer}>
+          <Text style={[styles.tutorialTitle, { color: theme.colors.text }]}>Installer CalcConform</Text>
+          <Text style={[styles.tutorialSubtitle, { color: theme.colors.textSecondary }]}>Ajoutez l'app à votre écran d'accueil</Text>
+        </View>
+        {onClose && (
+          <TouchableOpacity style={[styles.tutorialCloseButton, { backgroundColor: theme.colors.surfaceSecondary }]} onPress={onClose}>
             <X size={20} color={theme.colors.textSecondary} />
           </TouchableOpacity>
+        )}
+      </View>
+      
+      <View style={styles.tutorialSteps}>
+        <View style={styles.tutorialStep}>
+          <View style={[styles.tutorialStepNumber, { backgroundColor: theme.colors.primary }]}>
+            <Text style={styles.tutorialStepNumberText}>1</Text>
+          </View>
+          <View style={styles.tutorialStepContent}>
+            <Text style={styles.tutorialStepIcon}>⋮</Text>
+            <Text style={[styles.tutorialStepText, { color: theme.colors.text }]}>Ouvrez le menu du navigateur (3 points)</Text>
+          </View>
         </View>
         
-        <View style={styles.modalBody}>
-          <Text style={styles.introText}>
-            Installez Siemens CalcConform sur votre appareil pour un accès rapide et une expérience optimale.
-          </Text>
-          
-          <View style={styles.instructionsList}>
-            {instructions.steps.map((step, index) => (
-              <View key={index} style={styles.instructionStep}>
-                <View style={styles.stepIconContainer}>
-                  {React.cloneElement(step.icon as React.ReactElement, { size: 16, color: "#FFFFFF" })}
-                </View>
-                <Text style={styles.stepText}>
-                  {index + 1}. {step.text}
-                </Text>
-              </View>
-            ))}
+        <View style={styles.tutorialStep}>
+          <View style={[styles.tutorialStepNumber, { backgroundColor: theme.colors.primary }]}>
+            <Text style={styles.tutorialStepNumberText}>2</Text>
           </View>
-          
-          <View style={styles.genericTutorialNote}>
-            <Text style={styles.genericTutorialIcon}>💡</Text>
-            <Text style={styles.genericTutorialText}>
-              Tutoriel générique - Les étapes peuvent varier selon votre téléphone et navigateur
-            </Text>
-          </View>
-          
-          <View style={styles.benefitsSection}>
-            <Text style={styles.benefitsTitle}>✨ Avantages :</Text>
-            <Text style={styles.benefitsText}>
-              • Accès rapide depuis l'écran d'accueil{'\n'}
-              • Fonctionne hors ligne{'\n'}
-              • Interface plein écran{'\n'}
-              • Notifications push (futures mises à jour)
-            </Text>
+          <View style={styles.tutorialStepContent}>
+            <Download size={16} color={theme.colors.primary} />
+            <Text style={[styles.tutorialStepText, { color: theme.colors.text }]}>Sélectionnez "Ajouter à l'écran d'accueil"</Text>
           </View>
         </View>
-
-        <View style={styles.modalFooter}>
-          <Button
-            title="Compris"
-            onPress={onClose}
-            style={styles.understandButton}
-          />
+        
+        <View style={styles.tutorialStep}>
+          <View style={[styles.tutorialStepNumber, { backgroundColor: theme.colors.primary }]}>
+            <Text style={styles.tutorialStepNumberText}>3</Text>
+          </View>
+          <View style={styles.tutorialStepContent}>
+            <Text style={styles.tutorialStepIcon}>📱</Text>
+            <Text style={[styles.tutorialStepText, { color: theme.colors.text }]}>Confirmez l'installation</Text>
+          </View>
         </View>
       </View>
     </View>
   );
 }
 
-const createStyles = (theme: any) => StyleSheet.create({
+// Composant tutoriel iOS
+function IOSInstallTutorial({ onClose }: { onClose?: () => void }) {
+  const { theme } = useTheme();
+
+  return (
+    <View style={[styles.tutorialContent, { backgroundColor: theme.colors.surface }]}>
+      <View style={styles.tutorialHeader}>
+        <View style={[styles.tutorialIconContainer, { backgroundColor: theme.colors.primary + '20' }]}>
+          <Share size={24} color={theme.colors.primary} />
+        </View>
+        <View style={styles.tutorialTextContainer}>
+          <Text style={[styles.tutorialTitle, { color: theme.colors.text }]}>Installer CalcConform</Text>
+          <Text style={[styles.tutorialSubtitle, { color: theme.colors.textSecondary }]}>Ajoutez l'app à votre écran d'accueil</Text>
+        </View>
+        {onClose && (
+          <TouchableOpacity style={[styles.tutorialCloseButton, { backgroundColor: theme.colors.surfaceSecondary }]} onPress={onClose}>
+            <X size={20} color={theme.colors.textSecondary} />
+          </TouchableOpacity>
+        )}
+      </View>
+      
+      <View style={styles.tutorialSteps}>
+        <View style={styles.tutorialStep}>
+          <View style={[styles.tutorialStepNumber, { backgroundColor: theme.colors.primary }]}>
+            <Text style={styles.tutorialStepNumberText}>1</Text>
+          </View>
+          <View style={styles.tutorialStepContent}>
+            <Share size={16} color={theme.colors.primary} />
+            <Text style={[styles.tutorialStepText, { color: theme.colors.text }]}>Cliquez sur le bouton Partager</Text>
+          </View>
+        </View>
+        
+        <View style={styles.tutorialStep}>
+          <View style={[styles.tutorialStepNumber, { backgroundColor: theme.colors.primary }]}>
+            <Text style={styles.tutorialStepNumberText}>2</Text>
+          </View>
+          <View style={styles.tutorialStepContent}>
+            <Plus size={16} color={theme.colors.primary} />
+            <Text style={[styles.tutorialStepText, { color: theme.colors.text }]}>Sélectionnez "Ajouter à l'écran d'accueil"</Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// Export des composants pour utilisation dans d'autres pages
+export { AndroidInstallTutorial, IOSInstallTutorial };
+
+const styles = StyleSheet.create({
+  // Overlay sombre centré
   overlay: {
     position: 'fixed',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     zIndex: 2147483647,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     padding: 20,
   },
-  modalContent: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: 16,
-    padding: 16,
+  modal: {
     width: '100%',
-    maxWidth: '85%',
-    maxHeight: '70%',
+    maxWidth: 400,
+    borderRadius: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-    overflow: 'hidden',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 16,
   },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
+  
+  // Styles pour le contenu du tutoriel
+  tutorialContent: {
+    padding: 20,
+    borderRadius: 16,
   },
-  modalTitle: {
-    fontSize: 16,
-    fontFamily: 'Inter-Bold',
-    color: theme.colors.text,
-    flex: 1,
-    marginRight: 6,
-  },
-  closeButton: {
-    padding: 4,
-    borderRadius: 6,
-  },
-  modalBody: {
-    flex: 1,
-    marginBottom: 12,
-  },
-  introText: {
-    fontSize: 13,
-    fontFamily: 'Inter-Regular',
-    color: theme.colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 18,
-    marginBottom: 8,
-  },
-  instructionsList: {
-    marginBottom: 6,
-    gap: 4,
-  },
-  instructionStep: {
+  tutorialHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: theme.colors.primary,
-    borderRadius: 8,
-    gap: 8,
+    marginBottom: 20,
+    gap: 12,
   },
-  stepIconContainer: {
-    width: 16,
-    height: 16,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  tutorialIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
-    flexShrink: 0,
   },
-  stepText: {
-    fontSize: 11,
-    fontFamily: 'Inter-Medium',
-    color: '#FFFFFF',
-    flex: 1,
-    lineHeight: 14,
-  },
-  genericTutorialNote: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: theme.colors.warning + '20',
-    borderRadius: 8,
-    padding: 6,
-    marginTop: 4,
-    marginBottom: 6,
-    borderLeftWidth: 3,
-    borderLeftColor: theme.colors.warning,
-  },
-  genericTutorialIcon: {
-    fontSize: 12,
-    marginRight: 6,
-    marginTop: 1,
-  },
-  genericTutorialText: {
-    fontSize: 10,
-    fontFamily: 'Inter-Medium',
-    color: theme.colors.warning,
-    lineHeight: 12,
+  tutorialTextContainer: {
     flex: 1,
   },
-  benefitsSection: {
-    backgroundColor: theme.colors.surfaceSecondary,
-    borderRadius: 8,
-    padding: 8,
-    marginTop: 4,
-  },
-  benefitsTitle: {
-    fontSize: 12,
+  tutorialTitle: {
+    fontSize: 18,
     fontFamily: 'Inter-SemiBold',
-    color: theme.colors.text,
-    marginBottom: 3,
+    marginBottom: 4,
   },
-  benefitsText: {
-    fontSize: 10,
+  tutorialSubtitle: {
+    fontSize: 14,
     fontFamily: 'Inter-Regular',
-    color: theme.colors.textSecondary,
-    lineHeight: 14,
   },
-  modalFooter: {
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
+  tutorialCloseButton: {
+    padding: 8,
+    borderRadius: 8,
   },
-  understandButton: {
-    width: '100%',
-    paddingVertical: 10,
+  tutorialSteps: {
+    gap: 16,
+  },
+  tutorialStep: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  tutorialStepNumber: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  tutorialStepNumberText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Bold',
+    color: '#FFFFFF',
+  },
+  tutorialStepContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  tutorialStepText: {
+    fontSize: 15,
+    fontFamily: 'Inter-Medium',
+    flex: 1,
+    lineHeight: 22,
+  },
+  tutorialStepIcon: {
+    fontSize: 18,
+    width: 18,
+    textAlign: 'center',
   },
 });

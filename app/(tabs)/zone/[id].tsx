@@ -4,6 +4,7 @@ import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
 import { Plus, Settings, Wind, Star, Trash2, SquareCheck as CheckSquare, Square, X, Filter } from 'lucide-react-native';
 import { Header } from '@/components/Header';
 import { Button } from '@/components/Button';
+import { Input } from '@/components/Input';
 import { ComplianceIndicator } from '@/components/ComplianceIndicator';
 import { Project, Building, FunctionalZone, Shutter } from '@/types';
 import { useStorage } from '@/contexts/StorageContext';
@@ -44,6 +45,7 @@ export default function ZoneDetailScreen() {
     [shutterId: string]: {
       referenceFlow: string;
       measuredFlow: string;
+      remarks: string;
       hasBeenFocused: { referenceFlow: boolean; measuredFlow: boolean };
     }
   }>({});
@@ -70,6 +72,7 @@ export default function ZoneDetailScreen() {
               initialEditingFlows[shutter.id] = {
                 referenceFlow: shutter.referenceFlow > 0 ? shutter.referenceFlow.toString() : '',
                 measuredFlow: shutter.measuredFlow > 0 ? shutter.measuredFlow.toString() : '',
+                remarks: shutter.remarks || '',
                 hasBeenFocused: { referenceFlow: false, measuredFlow: false }
               };
             });
@@ -266,7 +269,7 @@ export default function ZoneDetailScreen() {
   };
 
   // Fonctions pour l'édition directe des débits
-  const handleFlowChange = useCallback((shutterId: string, field: 'referenceFlow' | 'measuredFlow', value: string) => {
+  const handleFlowChange = useCallback((shutterId: string, field: 'referenceFlow' | 'measuredFlow' | 'remarks', value: string) => {
     setEditingFlows(prev => ({
       ...prev,
       [shutterId]: {
@@ -355,6 +358,52 @@ export default function ZoneDetailScreen() {
             ...prev[shutterId],
             referenceFlow: shutter.referenceFlow > 0 ? shutter.referenceFlow.toString() : '',
             measuredFlow: shutter.measuredFlow > 0 ? shutter.measuredFlow.toString() : ''
+          }
+        }));
+      }
+    }
+  }, [editingFlows, zone, updateShutter]);
+
+  const handleRemarksBlur = useCallback(async (shutterId: string) => {
+    const shutter = zone?.shutters.find(s => s.id === shutterId);
+    if (!shutter) return;
+
+    const editingData = editingFlows[shutterId];
+    if (!editingData) return;
+
+    const newRemarks = editingData.remarks.trim();
+    const hasChanged = newRemarks !== (shutter.remarks || '');
+    
+    if (hasChanged) {
+      try {
+        const updatedShutter = await updateShutter(shutter.id, {
+          remarks: newRemarks || undefined,
+        });
+        
+        if (updatedShutter) {
+          // Mise à jour instantanée de l'état local de la zone
+          setZone(prevZone => {
+            if (!prevZone) return prevZone;
+            return {
+              ...prevZone,
+              shutters: prevZone.shutters.map(s => 
+                s.id === shutterId 
+                  ? { ...s, remarks: newRemarks || undefined, updatedAt: new Date() }
+                  : s
+              )
+            };
+          });
+          
+          console.log(`✅ Remarques du volet ${shutter.name} mises à jour: "${newRemarks}"`);
+        }
+        
+      } catch (error) {
+        console.error('Erreur lors de la sauvegarde des remarques:', error);
+        setEditingFlows(prev => ({
+          ...prev,
+          [shutterId]: {
+            ...prev[shutterId],
+            remarks: shutter.remarks || ''
           }
         }));
       }
@@ -466,7 +515,6 @@ export default function ZoneDetailScreen() {
           }
         }}
       >
-        {/* En-tête du volet */}
         <View style={styles.shutterHeader}>
           <View style={styles.shutterTitleSection}>
             {selectionMode && (
@@ -481,7 +529,16 @@ export default function ZoneDetailScreen() {
                 )}
               </TouchableOpacity>
             )}
-            <Text style={styles.shutterName}>{item.name}</Text>
+            <TouchableOpacity 
+              style={[styles.shutterNameContainer, selectionMode && styles.shutterNameContainerSelection]}
+              onPress={() => !selectionMode && openNameEditModal(item)}
+              disabled={selectionMode}
+            >
+              <Text style={styles.shutterName} numberOfLines={1} ellipsizeMode="tail">
+                {item.name}
+              </Text>
+              {!selectionMode && <Text style={styles.editIcon}>✏️</Text>}
+            </TouchableOpacity>
             <View style={[styles.shutterTypeBadge, { 
               backgroundColor: item.type === 'high' ? '#10B981' : '#F59E0B' 
             }]}>
@@ -519,7 +576,6 @@ export default function ZoneDetailScreen() {
           )}
         </View>
 
-        {/* Section d'édition des mesures de débit */}
         <TouchableOpacity 
           style={styles.flowEditingContainer}
           activeOpacity={1}
@@ -580,19 +636,38 @@ export default function ZoneDetailScreen() {
           </View>
         </TouchableOpacity>
 
-        {/* Indicateur de conformité */}
+        <TouchableOpacity 
+          style={styles.remarksEditingContainer}
+          activeOpacity={1}
+          onPress={(e) => e.stopPropagation()}
+        >
+          <TextInput
+            style={styles.remarksEditingInput}
+            value={editingData?.remarks || ''}
+            onChangeText={(text) => handleFlowChange(item.id, 'remarks', text)}
+            onBlur={() => handleRemarksBlur(item.id)}
+            placeholder="Remarques"
+            placeholderTextColor={theme.colors.textTertiary}
+            multiline={false}
+            textAlignVertical="top"
+            onPressIn={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+            }}
+            onFocus={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+            }}
+            onTouchStart={(e) => {
+              e.stopPropagation();
+            }}
+          />
+        </TouchableOpacity>
+
         <View style={styles.complianceSection}>
           <ComplianceIndicator compliance={compliance} size="small" />
         </View>
 
-        {/* Remarques si elles existent */}
-        {item.remarks && (
-          <View style={styles.remarksSection}>
-            <Text style={styles.remarksText} numberOfLines={2}>
-              💬 {item.remarks}
-            </Text>
-          </View>
-        )}
         </TouchableOpacity>
     );
   };
@@ -667,11 +742,12 @@ export default function ZoneDetailScreen() {
                 <Square size={20} color={theme.colors.textTertiary} />
               )}
               <Text style={[
-                  ? styles.selectAllButtonTextActive 
-                  : styles.selectAllButtonTextInactive
-              ]}>
-                {selectedShutters.size === sortedShutters.length ? 'Tout désélectionner' : 'Tout sélectionner'}
-              </Text>
+  selectedShutters.size === sortedShutters.length
+    ? styles.selectAllButtonTextActive
+    : styles.selectAllButtonTextInactive
+]}>
+  {selectedShutters.size === sortedShutters.length ? 'Tout désélectionner' : 'Tout sélectionner'}
+</Text>
             </TouchableOpacity>
             <View style={styles.selectionActionsRow}>
               <TouchableOpacity 
@@ -1004,17 +1080,11 @@ function EditShutterNameModal({ shutter, onCancel, strings }: {
       </View>
 
       <View style={styles.modalBody}>
-        <Text style={styles.inputLabel}>Nom du volet *</Text>
-        <TextInput
-          style={styles.nameTextInput}
+        <Input
+          label="Nom du volet *"
           value={name}
           onChangeText={setName}
           placeholder="Ex: VH01, VB01"
-          placeholderTextColor={theme.colors.textTertiary}
-          autoFocus={true}
-          selectTextOnFocus={true}
-          returnKeyType="done"
-          blurOnSubmit={true}
         />
       </View>
 
@@ -1361,6 +1431,28 @@ const createStyles = (theme: any) => StyleSheet.create({
     fontFamily: 'Inter-Regular',
     color: theme.colors.primary,
     lineHeight: 16,
+  },
+  remarksEditingInput: {
+    borderWidth: 1,
+    borderColor: theme.mode === 'dark' 
+      ? theme.colors.primary + '80'
+      : theme.colors.border,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    backgroundColor: theme.mode === 'dark' 
+      ? theme.colors.primary + '15'
+      : theme.colors.inputBackground,
+    color: theme.colors.text,
+    height: 36,
+  },
+  remarksEditingContainer: {
+    backgroundColor: theme.colors.surfaceSecondary,
+    borderRadius: 6,
+    padding: 4,
+    marginBottom: 12,
   },
   modalContent: {
     backgroundColor: theme.colors.surface,

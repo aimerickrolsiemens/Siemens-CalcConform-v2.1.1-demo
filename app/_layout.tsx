@@ -50,11 +50,47 @@ export default function RootLayout() {
   
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { showPrompt, hidePrompt, isLoading: promptLoading } = useInstallPrompt();
+  const { 
+    showInstallButton, 
+    showIOSInstructions, 
+    handleInstallClick, 
+    hideInstallButton, 
+    hideIOSInstructions,
+    isIOSDevice,
+    showAndroidInstructions,
+    hideAndroidInstructions
+  } = useInstallPrompt();
 
   // Configuration spécifique pour le web mobile
   useEffect(() => {
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      // Enregistrer le Service Worker pour PWA
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then((registration) => {
+              console.log('✅ Service Worker enregistré:', registration.scope);
+              
+              // Gestion des mises à jour
+              registration.addEventListener('updatefound', () => {
+                console.log('🔄 Nouvelle version du Service Worker trouvée');
+                const newWorker = registration.installing;
+                
+                if (newWorker) {
+                  newWorker.addEventListener('statechange', () => {
+                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                      console.log('✨ Nouvelle version disponible');
+                    }
+                  });
+                }
+              });
+            })
+            .catch((error) => {
+              console.error('❌ Erreur enregistrement Service Worker:', error);
+            });
+        });
+      }
+      
       // Empêcher le zoom sur les inputs sur iOS Safari
       const meta = document.createElement('meta');
       meta.name = 'viewport';
@@ -66,12 +102,6 @@ export default function RootLayout() {
       link.rel = 'stylesheet';
       link.href = '/web-app-styles.css';
       document.head.appendChild(link);
-      
-      // Enregistrer le Service Worker pour PWA
-      const swScript = document.createElement('script');
-      swScript.src = '/sw-register.js';
-      swScript.async = true;
-      document.head.appendChild(swScript);
       
       // Ajouter le manifest pour PWA
       const manifestLink = document.createElement('link');
@@ -163,7 +193,16 @@ export default function RootLayout() {
           <ModalProvider>
             <Slot />
             <StatusBar style="auto" />
-            <InstallPrompt visible={showPrompt} onClose={hidePrompt} />
+            <InstallPrompt 
+              visible={false}
+              onInstall={handleInstallClick}
+              onClose={hideInstallButton} 
+              showAndroidInstructions={showAndroidInstructions}
+              onCloseAndroidInstructions={hideAndroidInstructions}
+              showIOSInstructions={showIOSInstructions}
+              onCloseIOSInstructions={hideIOSInstructions}
+              isIOSDevice={isIOSDevice}
+            />
           </ModalProvider>
         </StorageProvider>
       </LanguageProvider>

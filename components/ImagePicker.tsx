@@ -19,9 +19,8 @@ export function ImagePicker({ onImageSelected, onClose }: ImagePickerProps) {
       const img = new Image();
 
       img.onload = () => {
-        // Améliorer la qualité : augmenter la résolution maximale
         const maxDimension = Math.max(img.width, img.height);
-        const targetMaxDimension = Math.min(maxDimension, 1920); // Augmenté de 800 à 1920
+        const targetMaxDimension = Math.min(maxDimension, 600); // Réduit pour économiser l'espace
         
         const ratio = targetMaxDimension / maxDimension;
         const newWidth = Math.round(img.width * ratio);
@@ -30,17 +29,14 @@ export function ImagePicker({ onImageSelected, onClose }: ImagePickerProps) {
         canvas.width = newWidth;
         canvas.height = newHeight;
 
-        // Améliorer la qualité de rendu
         if (ctx) {
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
         }
 
-        // Dessiner l'image redimensionnée
         ctx?.drawImage(img, 0, 0, newWidth, newHeight);
 
-        // Convertir en base64 avec meilleure qualité
-        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.92); // Augmenté de 0.8 à 0.92
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6); // Réduit pour économiser l'espace
         console.log('Image compressée, format:', compressedBase64.substring(0, 30));
         resolve(compressedBase64);
       };

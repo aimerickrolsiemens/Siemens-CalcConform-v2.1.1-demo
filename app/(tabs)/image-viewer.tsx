@@ -1,23 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Image, StyleSheet, TouchableOpacity, Text, Platform } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { StatusBar } from 'expo-status-bar';
 
 export default function ImageViewerScreen() {
-  const { imageUri, imageIndex, totalImages, allImages, noteId } = useLocalSearchParams<{ 
+  const { imageUri, imageIndex, totalImages, allImages, noteId, returnTo } = useLocalSearchParams<{ 
     imageUri: string; 
     imageIndex?: string; 
     totalImages?: string; 
     allImages?: string;
     noteId?: string;
+    returnTo?: string;
   }>();
 
-  const [currentIndex, setCurrentIndex] = useState(parseInt(imageIndex || '1') - 1);
+  // Initialiser l'index à partir du paramètre à chaque rendu
+  const initialIndex = parseInt(imageIndex || '1') - 1;
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
   
   // Parse all images from the parameter
   const images = allImages ? JSON.parse(decodeURIComponent(allImages)) : [imageUri];
   const totalCount = images.length;
+
+  // Réinitialiser l'index quand les paramètres changent
+  useEffect(() => {
+    const newIndex = parseInt(imageIndex || '1') - 1;
+    setCurrentIndex(newIndex);
+  }, [imageIndex, imageUri]);
 
   const goToPrevious = () => {
     if (currentIndex > 0) {
@@ -32,10 +41,32 @@ export default function ImageViewerScreen() {
   };
 
   const handleClose = () => {
-    if (noteId) {
-      router.push(`/(tabs)/note/${noteId}`);
-    } else {
-      router.back();
+    try {
+      console.log('🔙 Fermeture visualiseur - returnTo:', returnTo, 'noteId:', noteId);
+      
+      // Logique simplifiée et claire
+      if (returnTo === 'create') {
+        console.log('📝 Retour vers création de note');
+        // CORRIGÉ : Ajouter le paramètre preserveData pour éviter la réinitialisation
+        router.replace('/(tabs)/note/create?preserveData=true');
+      } else if (returnTo === 'edit' && noteId) {
+        console.log('✏️ Retour vers édition de note:', noteId);
+        router.replace(`/(tabs)/note/edit/${noteId}`);
+      } else if (noteId) {
+        console.log('📖 Retour vers détail de note:', noteId);
+        router.replace(`/(tabs)/note/${noteId}`);
+      } else {
+        console.log('🔙 Retour simple');
+        router.back();
+      }
+    } catch (error) {
+      console.error('❌ Erreur navigation visualiseur:', error);
+      // Fallback sécurisé
+      if (noteId) {
+        router.replace(`/(tabs)/note/${noteId}`);
+      } else {
+        router.replace('/(tabs)/notes');
+      }
     }
   };
 

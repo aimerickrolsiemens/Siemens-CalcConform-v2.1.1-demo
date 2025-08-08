@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, Platform, RefreshControl, TouchableOpacity, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Header } from '@/components/Header';
@@ -8,10 +8,9 @@ import { useStorage } from '@/contexts/StorageContext';
 import { calculateCompliance } from '@/utils/compliance';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useFocusEffect } from '@react-navigation/native';
+import { router, useFocusEffect } from 'expo-router';
 import { triggerCreateProjectModal } from '@/utils/EventEmitter';
 import { LoadingScreen } from '@/components/LoadingScreen';
-import { router } from 'expo-router';
 import { Note } from '@/types';
 import { FadeInView } from '@/components/AnimatedCard';
 

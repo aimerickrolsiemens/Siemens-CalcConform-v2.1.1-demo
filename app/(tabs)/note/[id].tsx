@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, TextInput } from 'react-native';
 import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
-import { CreditCard as Edit3, Trash2, Calendar, X, Check, Camera } from 'lucide-react-native';
+import { CreditCard as Edit3, Trash2, Calendar, X, Check, Camera, Settings } from 'lucide-react-native';
 import { Header } from '@/components/Header';
 import { Button } from '@/components/Button';
 import { InlineNoteEditor } from '@/components/InlineNoteEditor';
@@ -95,6 +95,9 @@ export default function NoteDetailScreen() {
     />);
   };
 
+  const handleEditNote = () => {
+    safeNavigate(`/(tabs)/note/edit/${note.id}`);
+  };
   const handleDelete = () => {
     if (!note) return;
 
@@ -181,9 +184,8 @@ export default function NoteDetailScreen() {
       const img = new Image();
 
       img.onload = () => {
-        // Améliorer la qualité : augmenter la résolution maximale
         const maxDimension = Math.max(img.width, img.height);
-        const targetMaxDimension = Math.min(maxDimension, 1920); // Augmenté de 800 à 1920
+        const targetMaxDimension = Math.min(maxDimension, 400); // Encore plus réduit pour éviter le quota
         
         const ratio = targetMaxDimension / maxDimension;
         const newWidth = Math.round(img.width * ratio);
@@ -192,17 +194,14 @@ export default function NoteDetailScreen() {
         canvas.width = newWidth;
         canvas.height = newHeight;
 
-        // Améliorer la qualité de rendu
         if (ctx) {
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
         }
 
-        // Dessiner l'image redimensionnée
         ctx?.drawImage(img, 0, 0, newWidth, newHeight);
 
-        // Convertir en base64 avec meilleure qualité
-        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.92); // Augmenté de 0.8 à 0.92
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.5); // Qualité encore plus réduite
         console.log('Image compressée, format:', compressedBase64.substring(0, 30));
         resolve(compressedBase64);
       };
@@ -213,48 +212,87 @@ export default function NoteDetailScreen() {
 
   const handleFileSelect = async (event: Event) => {
     const target = event.target as HTMLInputElement;
-    const file = target.files?.[0];
+    const files = target.files;
     
-    if (file && file.type.startsWith('image/')) {
+    if (files && files.length > 0) {
       try {
-        console.log('📸 Image sélectionnée:', file.name, 'Taille:', file.size, 'Type:', file.type);
+        console.log('📸 Images sélectionnées depuis détail note:', files.length);
         
-        // Compresser l'image pour le stockage
-        const compressedBase64 = await compressImage(file);
-        console.log('💾 Image compressée pour stockage, taille:', compressedBase64.length);
+        const compressedImages: string[] = [];
         
-        if (note) {
-          const currentImages = note.images || [];
-          const updatedNote = await updateNote(note.id, {
-            images: [...currentImages, compressedBase64],
-          });
-          if (updatedNote) {
-            setNote(updatedNote);
+        // Traiter chaque fichier sélectionné
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          if (file && file.type.startsWith('image/')) {
+            console.log(`📸 Traitement image détail ${i + 1}/${files.length}:`, file.name);
+            
+            try {
+              const compressedImage = await compressImage(file);
+              
+              if (compressedImage && compressedImage.length > 0) {
+                compressedImages.push(compressedImage);
+                console.log(`✅ Image détail ${i + 1} compressée avec succès`);
+              } else {
+                console.warn(`⚠️ Image détail ${i + 1} compressée vide, ignorée`);
+              }
+            } catch (compressionError) {
+              console.error(`❌ Erreur compression image détail ${i + 1}:`, compressionError);
+              
+              // Fallback sans compression pour cette image
+              try {
+                const reader = new FileReader();
+                const base64Promise = new Promise<string>((resolve, reject) => {
+                  reader.onload = (e) => {
+                    const base64 = e.target?.result as string;
+                    if (base64) {
+                      resolve(base64);
+                    } else {
+                      reject(new Error('Base64 vide'));
+                    }
+                  };
+                  reader.onerror = () => reject(new Error('Erreur FileReader'));
+                });
+                
+                reader.readAsDataURL(file);
+                const base64 = await base64Promise;
+                
+                compressedImages.push(base64);
+                console.log(`✅ Image détail ${i + 1} ajoutée sans compression (fallback)`);
+              } catch (fallbackError) {
+                console.error(`❌ Erreur fallback image détail ${i + 1}:`, fallbackError);
+              }
+            }
+          } else {
+            console.warn(`⚠️ Fichier détail ${i + 1} ignoré (pas une image):`, file.type);
           }
         }
-      } catch (error) {
-        console.error('Erreur lors de la compression de l\'image:', error);
-        // Fallback sans compression
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const base64 = e.target?.result as string;
-          console.log('📄 Fallback Base64 créé:', base64.substring(0, 30));
-          if (note) {
-            const currentImages = note.images || [];
-            updateNote(note.id, {
-              images: [...currentImages, base64],
-            }).then(updatedNote => {
-              if (updatedNote) {
-                setNote(updatedNote);
-              }
-            });
+        
+        // Mettre à jour la note avec toutes les nouvelles images
+        if (note && compressedImages.length > 0) {
+          const currentImages = note.images || [];
+          console.log('📋 Images actuelles:', currentImages.length);
+          console.log('➕ Ajout de', compressedImages.length, 'nouvelles images...');
+          
+          const updatedNote = await updateNote(note.id, {
+            images: [...currentImages, ...compressedImages],
+          });
+          
+          if (updatedNote) {
+            console.log('✅ Note mise à jour avec succès, total images:', updatedNote.images?.length || 0);
+            setNote(updatedNote);
+          } else {
+            console.error('❌ Erreur: updateNote a retourné null');
           }
-        };
-        reader.readAsDataURL(file);
+        } else if (compressedImages.length === 0) {
+          console.warn('⚠️ Aucune image valide à ajouter');
+        }
+        
+      } catch (error) {
+        console.error('❌ Erreur générale lors du traitement des images depuis détail:', error);
       }
     }
     
-    // Reset input
+    // Réinitialiser l'input
     target.value = '';
   };
 
@@ -263,6 +301,21 @@ export default function NoteDetailScreen() {
     
     const currentImages = note.images || [];
     const newImages = currentImages.filter((_, i) => i !== index);
+    
+    const updatedNote = await updateNote(note.id, {
+      images: newImages.length > 0 ? newImages : undefined,
+    });
+    
+    if (updatedNote) {
+      setNote(updatedNote);
+    }
+  };
+
+  const handleRemoveMultipleImages = async (indices: number[]) => {
+    if (!note) return;
+    
+    const currentImages = note.images || [];
+    const newImages = currentImages.filter((_, i) => !indices.includes(i));
     
     const updatedNote = await updateNote(note.id, {
       images: newImages.length > 0 ? newImages : undefined,
@@ -317,6 +370,9 @@ export default function NoteDetailScreen() {
         onBack={handleBack}
         rightComponent={
           <View style={styles.headerActions}>
+            <TouchableOpacity onPress={handleEditNote} style={styles.actionButton}>
+              <Settings size={20} color={theme.colors.primary} />
+            </TouchableOpacity>
             <TouchableOpacity onPress={handleAddImage} style={styles.actionButton}>
               <Camera size={20} color={theme.colors.primary} />
             </TouchableOpacity>
@@ -345,17 +401,34 @@ export default function NoteDetailScreen() {
               <Text style={styles.metaValue}>{formatDate(note.updatedAt)}</Text>
             </View>
           )}
+          {note.description && (
+            <View style={styles.metaRow}>
+              <Text style={styles.metaLabel}>Description</Text>
+              <Text style={styles.metaValue}>{note.description}</Text>
+            </View>
+          )}
+          {note.location && (
+            <View style={styles.metaRow}>
+              <Text style={styles.metaLabel}>Lieu</Text>
+              <Text style={styles.metaValue}>{note.location}</Text>
+            </View>
+          )}
+          {note.tags && (
+            <View style={styles.metaRow}>
+              <Text style={styles.metaLabel}>Mots-clés</Text>
+              <Text style={styles.metaValue}>{note.tags}</Text>
+            </View>
+          )}
         </View>
 
-        {/* Galerie d'images */}
         <NoteImageGallery
           images={note.images || []}
           onRemoveImage={handleRemoveImage}
+          onRemoveMultipleImages={handleRemoveMultipleImages}
           editable={true}
           noteId={note.id}
         />
 
-        {/* Contenu de la note */}
         <View style={styles.contentSection}>
           <Text style={styles.contentLabel}>{strings.noteContent}</Text>
           <TextInput
@@ -380,12 +453,12 @@ export default function NoteDetailScreen() {
         </View>
       </ScrollView>
 
-      {/* Input caché pour web */}
       {Platform.OS === 'web' && (
         <input
           ref={fileInputRef}
           type="file"
           accept="image/*"
+          multiple
           style={{ display: 'none' }}
           onChange={(e) => handleFileSelect(e as any)}
         />
@@ -659,13 +732,15 @@ const createStyles = (theme: any) => StyleSheet.create({
     paddingHorizontal: 8,
     borderRadius: 6,
     backgroundColor: theme.colors.surfaceSecondary,
-    maxWidth: 250,
+    maxWidth: 200,
+    marginRight: 16,
   },
   titleText: {
     fontSize: 20,
     fontFamily: 'Inter-Bold',
     color: theme.colors.text,
     flex: 1,
+    minWidth: 0,
   },
   titleEditIcon: {
     fontSize: 12,
