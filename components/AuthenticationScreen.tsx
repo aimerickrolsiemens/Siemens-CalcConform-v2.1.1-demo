@@ -180,12 +180,14 @@ export function AuthenticationScreen() {
 
 const createStyles = (theme: any) => StyleSheet.create({
   overlay: {
-    position: 'absolute',
+    position: 'fixed',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    backgroundColor: '#0B1220',
+    width: '100vw',
+    height: '100vh',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 999999,
