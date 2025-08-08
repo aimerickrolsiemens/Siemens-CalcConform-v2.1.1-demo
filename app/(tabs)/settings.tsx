@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
-import { Settings as SettingsIcon, Globe, Trash2, Download, Info, Database, ChevronRight, CircleCheck as CheckCircle, X, Moon, Sun, Smartphone } from 'lucide-react-native';
+import { Settings as SettingsIcon, Globe, Trash2, Download, Info, Database, ChevronRight, CircleCheck as CheckCircle, X, Moon, Sun, Smartphone, Shield } from 'lucide-react-native';
 import { Header } from '@/components/Header';
 import { Button } from '@/components/Button';
 import { useStorage } from '@/contexts/StorageContext';
@@ -170,15 +170,6 @@ export default function SettingsScreen() {
           {subtitle && (
             <Text style={styles.settingSubtitle}>{subtitle}</Text>
           )}
-          
-          {renderSettingItem(
-            <Shield size={20} color={theme.colors.error} />,
-            'Déconnexion',
-            'Se déconnecter de l\'application',
-            handleLogout,
-            undefined,
-            true
-          )}
         </View>
       </View>
       {rightContent || (onPress && <ChevronRight size={20} color={theme.colors.textTertiary} />)}
@@ -268,6 +259,20 @@ export default function SettingsScreen() {
               strings.clearAllData,
               strings.clearAllDataDesc,
               handleClearAllData,
+              undefined,
+              true
+            )}
+          </View>
+
+          {/* Section Sécurité */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>🔐 Sécurité</Text>
+            
+            {renderSettingItem(
+              <Shield size={20} color={theme.colors.error} />,
+              'Déconnexion',
+              'Se déconnecter de l\'application',
+              handleLogout,
               undefined,
               true
             )}
