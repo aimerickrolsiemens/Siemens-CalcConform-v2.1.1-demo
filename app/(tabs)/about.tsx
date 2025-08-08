@@ -7,12 +7,14 @@ import * as WebBrowser from 'expo-web-browser';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useModal } from '@/contexts/ModalContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useInstallPrompt } from '@/hooks/useInstallPrompt';
 import { AndroidInstallTutorial, IOSInstallTutorial } from '@/components/InstallPrompt';
 
 export default function AboutScreen() {
   const { strings } = useLanguage();
   const { theme } = useTheme();
+  const { logout } = useAuth();
   const { showModal } = useModal();
   const { showInstallButton, handleInstallClick, isInstalled, isIOSDevice } = useInstallPrompt();
 
@@ -57,6 +59,18 @@ export default function AboutScreen() {
 
   const handleLinkedInPress = () => {
     showModal(<LinkedInModal />);
+  };
+
+  const handleLogout = () => {
+    showModal(<LogoutAboutModal />);
+  };
+
+  const confirmLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error('Erreur lors de la déconnexion:', error);
+    }
   };
 
   const handleOpenPDF = async () => {
@@ -216,8 +230,72 @@ export default function AboutScreen() {
               variant="secondary"
               style={styles.linkedinButton}
             />
+            <Button
+              title="Se déconnecter"
+              onPress={handleLogout}
+              variant="danger"
+              style={styles.linkedinButton}
+            />
           </View>
         </ScrollView>
+      </View>
+    </View>
+  );
+}
+
+// Modal de déconnexion depuis la page À propos
+function LogoutAboutModal() {
+  const { theme } = useTheme();
+  const { hideModal } = useModal();
+  const { logout } = useAuth();
+  const styles = createStyles(theme);
+
+  const handleConfirm = async () => {
+    try {
+      await logout();
+      hideModal();
+    } catch (error) {
+      console.error('Erreur lors de la déconnexion:', error);
+      hideModal();
+    }
+  };
+
+  return (
+    <View style={styles.modalContent}>
+      <View style={styles.modalHeader}>
+        <Shield size={32} color={theme.colors.error} />
+        <Text style={styles.modalTitle}>Confirmer la déconnexion</Text>
+        <TouchableOpacity 
+          onPress={hideModal}
+          style={styles.closeButton}
+        >
+          <X size={20} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
+      
+      <View style={styles.contactContent}>
+        <Text style={styles.contactIntro}>
+          Êtes-vous sûr de vouloir vous déconnecter de l'application ?
+        </Text>
+        
+        <Text style={styles.contactEncouragement}>
+          Vous devrez saisir à nouveau le code d'authentification pour accéder à l'application. Vos données resteront sauvegardées sur cet appareil.
+        </Text>
+      </View>
+
+      <View style={styles.contactButtons}>
+        <Button
+          title="Annuler"
+          onPress={hideModal}
+          variant="secondary"
+          style={styles.contactButton}
+        />
+        <Button
+          title="Se déconnecter"
+          onPress={handleConfirm}
+          variant="danger"
+          style={styles.contactButton}
+        />
       </View>
     </View>
   );

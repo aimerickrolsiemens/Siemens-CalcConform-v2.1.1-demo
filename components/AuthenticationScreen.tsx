@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Platform, Animated, Image } from 'react-native';
-import { Shield, Eye, EyeOff, AlertCircle } from 'lucide-react-native';
+import { Shield, Eye, EyeOff, CircleAlert as AlertCircle } from 'lucide-react-native';
 import { Button } from '@/components/Button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
